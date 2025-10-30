@@ -1,0 +1,41 @@
+{
+  "carChassis": "2GNFLGEK0D6123789",
+  "Model": "Tracker Premier",
+  "year": 2024,
+  "ModelYear": 2025,
+  "Manufacturer": "chevrolet",
+  "horsePower": 153,
+  "gasType": "Flex",
+  "currentMileage": 6800,
+  "color": "Gold",
+  "fuelCapacityLiters": 54,
+  "metrics": {
+    "engineTempCelsius": 88,
+    "oilTempCelsius": 94,
+    "batteryChargePerc": 87,
+    "fuelAvailableLiters": 39,
+    "coolantCelsius": 82,
+    "trip": {
+      "tripMileage": 27,
+      "tripTimeMinutes": 44,
+      "tripFuelLiters": 3.3,
+      "tripMaxSpeedKm": 76,
+      "tripAverageSpeedKm": 37,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 08:55:20"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 09:39:00"
+  },
+  "carInsurance": {
+    "number": "INS-792468135",
+    "provider": "Chubb",
+    "validUntil": "2027-06-03"
+  },
+  "market": {
+    "currentPrice": 156000,
+    "currency": "BRL",
+    "location": "Florianópolis, SC",
+    "dealer": "Chevrolet Ilha",
+    "warrantyYears": 5,
+    "evaluator": "Tabela FIPE"
+  }
+}

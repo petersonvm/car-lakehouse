@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "scheduler:CreateSchedule",
+        "scheduler:GetSchedule",
+        "scheduler:UpdateSchedule",
+        "scheduler:DeleteSchedule",
+        "scheduler:ListSchedules",
+        "scheduler:TagResource",
+        "scheduler:UntagResource"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

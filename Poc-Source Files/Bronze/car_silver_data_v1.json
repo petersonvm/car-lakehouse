@@ -1,0 +1,41 @@
+{
+  "carChassis": "5ifRWRvuBaRWyPzdZbXgXTgzAc7KC0dQSkaA8Ak",
+  "Model": "HB20 Sedan",
+  "year": 2024,
+  "ModelYear": 2025,
+  "Manufacturer": "hyundai",
+  "horsePower": 120,
+  "gasType": "Flex",
+  "currentMileage": 8500,
+  "color": "Blue",
+  "fuelCapacityLiters": 50,
+  "metrics": {
+    "engineTempCelsius": 102,
+    "oilTempCelsius": 108,
+    "batteryChargePerc": 72,
+    "fuelAvailableLiters": 28,
+    "coolantCelsius": 93,
+    "trip": {
+      "tripMileage": 22,
+      "tripTimeMinutes": 58,
+      "tripFuelLiters": 3.8,
+      "tripMaxSpeedKm": 68,
+      "tripAverageSpeedKm": 23,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 09:57:35"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 11:00:00"
+  },
+  "carInsurance": {
+    "number": "INS-987654321",
+    "provider": "SafeAuto",
+    "validUntil": "2026-10-29"
+  },
+  "market": {
+    "currentPrice": 108000,
+    "currency": "BRL",
+    "location": "Recife, PE",
+    "dealer": "Hyndai Pateo",
+    "warrantyYears": 5,
+    "evaluator": "Tabela Fiepe"
+  }
+}

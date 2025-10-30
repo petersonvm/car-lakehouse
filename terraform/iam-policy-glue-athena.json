@@ -1,0 +1,107 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "GlueCatalogAccess",
+      "Effect": "Allow",
+      "Action": [
+        "glue:CreateDatabase",
+        "glue:GetDatabase",
+        "glue:GetDatabases",
+        "glue:UpdateDatabase",
+        "glue:DeleteDatabase",
+        "glue:CreateTable",
+        "glue:GetTable",
+        "glue:GetTables",
+        "glue:UpdateTable",
+        "glue:DeleteTable",
+        "glue:GetPartition",
+        "glue:GetPartitions",
+        "glue:BatchGetPartition",
+        "glue:CreatePartition",
+        "glue:UpdatePartition",
+        "glue:DeletePartition",
+        "glue:BatchCreatePartition",
+        "glue:BatchDeletePartition",
+        "glue:TagResource",
+        "glue:UntagResource",
+        "glue:GetTags"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-east-1:901207488135:catalog",
+        "arn:aws:glue:us-east-1:901207488135:database/*",
+        "arn:aws:glue:us-east-1:901207488135:table/*"
+      ]
+    },
+    {
+      "Sid": "GlueCrawlerAccess",
+      "Effect": "Allow",
+      "Action": [
+        "glue:CreateCrawler",
+        "glue:GetCrawler",
+        "glue:GetCrawlers",
+        "glue:UpdateCrawler",
+        "glue:DeleteCrawler",
+        "glue:StartCrawler",
+        "glue:StopCrawler",
+        "glue:GetCrawlerMetrics",
+        "glue:TagResource",
+        "glue:UntagResource",
+        "glue:GetTags"
+      ],
+      "Resource": [
+        "arn:aws:glue:us-east-1:901207488135:crawler/*"
+      ]
+    },
+    {
+      "Sid": "AthenaWorkgroupAccess",
+      "Effect": "Allow",
+      "Action": [
+        "athena:CreateWorkGroup",
+        "athena:GetWorkGroup",
+        "athena:UpdateWorkGroup",
+        "athena:DeleteWorkGroup",
+        "athena:ListWorkGroups",
+        "athena:TagResource",
+        "athena:UntagResource",
+        "athena:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:athena:us-east-1:901207488135:workgroup/*"
+      ]
+    },
+    {
+      "Sid": "AthenaQueryAccess",
+      "Effect": "Allow",
+      "Action": [
+        "athena:StartQueryExecution",
+        "athena:GetQueryExecution",
+        "athena:GetQueryResults",
+        "athena:StopQueryExecution",
+        "athena:ListQueryExecutions",
+        "athena:GetDataCatalog",
+        "athena:ListDataCatalogs"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "IAMPassRoleForGlueAndAthena",
+      "Effect": "Allow",
+      "Action": [
+        "iam:PassRole"
+      ],
+      "Resource": [
+        "arn:aws:iam::901207488135:role/datalake-pipeline-glue-crawler-role-dev",
+        "arn:aws:iam::901207488135:role/datalake-pipeline-athena-execution-role-dev"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "glue.amazonaws.com",
+            "athena.amazonaws.com"
+          ]
+        }
+      }
+    }
+  ]
+}

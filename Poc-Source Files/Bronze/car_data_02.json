@@ -1,0 +1,41 @@
+{
+  "carChassis": "1HGBH41JXMN109186",
+  "Model": "Civic LXR",
+  "year": 2022,
+  "ModelYear": 2023,
+  "Manufacturer": "honda",
+  "horsePower": 140,
+  "gasType": "Flex",
+  "currentMileage": 15200,
+  "color": "Silver",
+  "fuelCapacityLiters": 47,
+  "metrics": {
+    "engineTempCelsius": 88,
+    "oilTempCelsius": 95,
+    "batteryChargePerc": 82,
+    "fuelAvailableLiters": 35,
+    "coolantCelsius": 82,
+    "trip": {
+      "tripMileage": 32,
+      "tripTimeMinutes": 55,
+      "tripFuelLiters": 3.2,
+      "tripMaxSpeedKm": 75,
+      "tripAverageSpeedKm": 35,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 07:45:10"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 08:40:00"
+  },
+  "carInsurance": {
+    "number": "INS-789123456",
+    "provider": "Bradesco Auto",
+    "validUntil": "2026-03-22"
+  },
+  "market": {
+    "currentPrice": 125000,
+    "currency": "BRL",
+    "location": "Rio de Janeiro, RJ",
+    "dealer": "Honda Barra",
+    "warrantyYears": 3,
+    "evaluator": "Tabela FIPE"
+  }
+}

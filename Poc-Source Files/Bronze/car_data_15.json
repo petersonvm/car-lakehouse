@@ -1,0 +1,41 @@
+{
+  "carChassis": "WVWZZZ1JZ2W123456",
+  "Model": "Ka Sedan SE",
+  "year": 2020,
+  "ModelYear": 2021,
+  "Manufacturer": "ford",
+  "horsePower": 85,
+  "gasType": "Flex",
+  "currentMileage": 45200,
+  "color": "Pink",
+  "fuelCapacityLiters": 40,
+  "metrics": {
+    "engineTempCelsius": 97,
+    "oilTempCelsius": 104,
+    "batteryChargePerc": 62,
+    "fuelAvailableLiters": 19,
+    "coolantCelsius": 92,
+    "trip": {
+      "tripMileage": 25,
+      "tripTimeMinutes": 67,
+      "tripFuelLiters": 3.2,
+      "tripMaxSpeedKm": 58,
+      "tripAverageSpeedKm": 22,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 05:30:45"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 06:37:00"
+  },
+  "carInsurance": {
+    "number": "INS-135792468",
+    "provider": "QBE Seguros",
+    "validUntil": "2026-01-17"
+  },
+  "market": {
+    "currentPrice": 52000,
+    "currency": "BRL",
+    "location": "Maceió, AL",
+    "dealer": "Ford Alagoas",
+    "warrantyYears": 1,
+    "evaluator": "Tabela FIPE"
+  }
+}

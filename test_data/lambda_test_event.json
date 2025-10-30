@@ -1,0 +1,14 @@
+{
+  "Records": [
+    {
+      "s3": {
+        "bucket": {
+          "name": "datalake-pipeline-bronze-dev"
+        },
+        "object": {
+          "key": "bronze/partition_year=2025/partition_month=10/partition_day=29/car_data_20251029_110000.json"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+{"Records":[{"s3":{"bucket":{"name":"datalake-pipeline-landing-dev"},"object":{"key":"car_raw.json"}}}]}

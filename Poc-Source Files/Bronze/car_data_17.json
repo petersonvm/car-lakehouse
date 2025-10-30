@@ -1,0 +1,41 @@
+{
+  "carChassis": "9BFXZ2A77AM123456",
+  "Model": "Mobi Drive",
+  "year": 2022,
+  "ModelYear": 2023,
+  "Manufacturer": "fiat",
+  "horsePower": 75,
+  "gasType": "Flex",
+  "currentMileage": 19600,
+  "color": "Violet",
+  "fuelCapacityLiters": 35,
+  "metrics": {
+    "engineTempCelsius": 86,
+    "oilTempCelsius": 91,
+    "batteryChargePerc": 76,
+    "fuelAvailableLiters": 21,
+    "coolantCelsius": 81,
+    "trip": {
+      "tripMileage": 19,
+      "tripTimeMinutes": 42,
+      "tripFuelLiters": 2.3,
+      "tripMaxSpeedKm": 55,
+      "tripAverageSpeedKm": 27,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 09:20:25"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 10:02:00"
+  },
+  "carInsurance": {
+    "number": "INS-357924681",
+    "provider": "Berkley",
+    "validUntil": "2026-02-14"
+  },
+  "market": {
+    "currentPrice": 64000,
+    "currency": "BRL",
+    "location": "Campo Grande, MS",
+    "dealer": "Fiat Pantanal",
+    "warrantyYears": 2,
+    "evaluator": "Tabela FIPE"
+  }
+}

@@ -1,0 +1,117 @@
+# ============================================
+# Terraform Variables Example File
+# ============================================
+# Copy this file to terraform.tfvars and fill in your values
+# cp terraform.tfvars.example terraform.tfvars
+# ============================================
+
+# AWS Configuration
+aws_region   = "us-east-1"
+project_name = "my-datalake-pipeline"
+environment  = "dev"
+
+# S3 Buckets Configuration (Medallion Architecture)
+# You can customize the bucket names and lifecycle policies
+# s3_buckets = {
+#   landing = {
+#     name_suffix = "landing"
+#     versioning  = true
+#     lifecycle_rules = {
+#       enabled                       = true
+#       transition_to_glacier_days    = 90
+#       transition_to_deep_archive_days = 180
+#       expiration_days               = 365
+#     }
+#   }
+#   bronze = {
+#     name_suffix = "bronze"
+#     versioning  = true
+#     lifecycle_rules = {
+#       enabled                       = true
+#       transition_to_glacier_days    = 180
+#       transition_to_deep_archive_days = 365
+#       expiration_days               = 730
+#     }
+#   }
+#   silver = {
+#     name_suffix = "silver"
+#     versioning  = true
+#     lifecycle_rules = {
+#       enabled                       = true
+#       transition_to_glacier_days    = 365
+#       transition_to_deep_archive_days = 730
+#       expiration_days               = 1095
+#     }
+#   }
+#   gold = {
+#     name_suffix = "gold"
+#     versioning  = true
+#     lifecycle_rules = {
+#       enabled                       = false
+#       transition_to_glacier_days    = 0
+#       transition_to_deep_archive_days = 0
+#       expiration_days               = 0
+#     }
+#   }
+# }
+
+# Lambda Functions Configuration
+# You can customize the function names and runtime configurations
+# lambda_functions = {
+#   ingestion = {
+#     name_suffix  = "ingestion"
+#     description  = "Lambda function for data ingestion (Source to Landing)"
+#     handler      = "main.handler"
+#     runtime      = "python3.9"
+#     timeout      = 900
+#     memory_size  = 1024
+#     environment_vars = {
+#       STAGE = "ingestion"
+#     }
+#   }
+#   cleansing = {
+#     name_suffix  = "cleansing"
+#     description  = "Lambda function for data cleansing (Landing to Bronze)"
+#     handler      = "main.handler"
+#     runtime      = "python3.9"
+#     timeout      = 300
+#     memory_size  = 512
+#     environment_vars = {
+#       STAGE = "cleansing"
+#     }
+#   }
+#   analysis = {
+#     name_suffix  = "analysis"
+#     description  = "Lambda function for data analysis (Bronze to Silver)"
+#     handler      = "main.handler"
+#     runtime      = "python3.9"
+#     timeout      = 600
+#     memory_size  = 1024
+#     environment_vars = {
+#       STAGE = "analysis"
+#     }
+#   }
+#   compliance = {
+#     name_suffix  = "compliance"
+#     description  = "Lambda function for compliance validation (Silver to Gold)"
+#     handler      = "main.handler"
+#     runtime      = "python3.9"
+#     timeout      = 300
+#     memory_size  = 512
+#     environment_vars = {
+#       STAGE = "compliance"
+#     }
+#   }
+# }
+
+# Lambda Package Path
+# lambda_package_path = "../assets/dummy_package.zip"
+
+# Common Tags
+common_tags = {
+  Project     = "DataLake-Pipeline"
+  ManagedBy   = "Terraform"
+  Environment = "dev"
+  Owner       = "DevOps-Team"
+  CostCenter  = "Engineering"
+}

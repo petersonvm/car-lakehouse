@@ -1,0 +1,41 @@
+{
+  "carChassis": "WDDGF4HB1DA123789",
+  "Model": "Kwid Zen",
+  "year": 2024,
+  "ModelYear": 2025,
+  "Manufacturer": "renault",
+  "horsePower": 70,
+  "gasType": "Flex",
+  "currentMileage": 3400,
+  "color": "Green",
+  "fuelCapacityLiters": 28,
+  "metrics": {
+    "engineTempCelsius": 84,
+    "oilTempCelsius": 89,
+    "batteryChargePerc": 91,
+    "fuelAvailableLiters": 18,
+    "coolantCelsius": 79,
+    "trip": {
+      "tripMileage": 15,
+      "tripTimeMinutes": 35,
+      "tripFuelLiters": 1.8,
+      "tripMaxSpeedKm": 52,
+      "tripAverageSpeedKm": 26,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 09:35:40"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 10:10:00"
+  },
+  "carInsurance": {
+    "number": "INS-468135792",
+    "provider": "Zurich",
+    "validUntil": "2027-02-28"
+  },
+  "market": {
+    "currentPrice": 58000,
+    "currency": "BRL",
+    "location": "João Pessoa, PB",
+    "dealer": "Renault Nordeste",
+    "warrantyYears": 3,
+    "evaluator": "Tabela FIPE"
+  }
+}

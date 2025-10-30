@@ -1,0 +1,41 @@
+{
+  "carChassis": "9BWSU19F08B302159",
+  "Model": "Corolla GLI",
+  "year": 2024,
+  "ModelYear": 2025,
+  "Manufacturer": "toyota",
+  "horsePower": 132,
+  "gasType": "Flex",
+  "currentMileage": 2800,
+  "color": "Black",
+  "fuelCapacityLiters": 60,
+  "metrics": {
+    "engineTempCelsius": 85,
+    "oilTempCelsius": 91,
+    "batteryChargePerc": 92,
+    "fuelAvailableLiters": 45,
+    "coolantCelsius": 78,
+    "trip": {
+      "tripMileage": 18,
+      "tripTimeMinutes": 38,
+      "tripFuelLiters": 2.1,
+      "tripMaxSpeedKm": 58,
+      "tripAverageSpeedKm": 28,
+      "tripStartTimestamp": "Wed, 29 Oct 2025 10:15:30"
+    },
+    "metricTimestamp": "Wed, 29 Oct 2025 10:53:00"
+  },
+  "carInsurance": {
+    "number": "INS-321654987",
+    "provider": "SulAmérica",
+    "validUntil": "2027-01-10"
+  },
+  "market": {
+    "currentPrice": 142000,
+    "currency": "BRL",
+    "location": "Belo Horizonte, MG",
+    "dealer": "Toyota Contorno",
+    "warrantyYears": 5,
+    "evaluator": "Tabela FIPE"
+  }
+}

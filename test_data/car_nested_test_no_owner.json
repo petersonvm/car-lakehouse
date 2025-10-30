@@ -1,0 +1,29 @@
+{
+  "carChassis": "WBA12345678901234",
+  "manufacturer": "BMW",
+  "model": "X5",
+  "year": 2023,
+  "color": "blue",
+  "metrics": {
+    "metricTimestamp": "2025-10-30T14:30:00Z",
+    "engineTempCelsius": 92.5,
+    "fuelLevelLitres": 45.8,
+    "fuelCapacityLitres": 80.0,
+    "speedKmh": 85.3,
+    "odometerKm": 25678.9,
+    "tripDistanceKm": 234.5
+  },
+  "market": {
+    "currentPrice": 75000.00,
+    "currency": "USD",
+    "marketRegion": "North America",
+    "marketSegment": "Luxury SUV"
+  },
+  "carInsurance": {
+    "policyNumber": "POL-2023-BMW-X5-001",
+    "provider": "Premium Auto Insurance",
+    "expiryDate": "2024-10-30",
+    "coverageType": "Comprehensive",
+    "annualPremium": 2400.00
+  }
+}
