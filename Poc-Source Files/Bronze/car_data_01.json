@@ -19,7 +19,7 @@
       "tripMileage": 24,
       "tripTimeMinutes": 45,
       "tripFuelLiters": 2.8,
-      "tripMaxSpeedKm": 65,
+      "tripMaxSpeedKm": 125,
       "tripAverageSpeedKm": 32,
       "tripStartTimestamp": "Wed, 29 Oct 2025 08:30:20"
     },

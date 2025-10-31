@@ -90,18 +90,28 @@ resource "aws_glue_trigger" "job_succeeded_start_crawler" {
 }
 
 # ----------------------------------------------------------------------------
-# 4. TRIGGER CONDICIONAL - Silver Crawler Succeeded → Start Gold Job
+# 4. TRIGGER CONDICIONAL - Silver Crawler Succeeded → Start Gold Jobs (PARALLEL)
 # ----------------------------------------------------------------------------
-resource "aws_glue_trigger" "silver_crawler_succeeded_start_gold_job" {
-  name          = "${var.project_name}-silver-crawler-succeeded-start-gold-job-${var.environment}"
-  description   = "Trigger condicional: Quando Silver Crawler SUCCEEDED, inicia Gold Job automaticamente"
+resource "aws_glue_trigger" "silver_crawler_succeeded_start_gold_jobs" {
+  name          = "${var.project_name}-silver-crawler-succeeded-start-gold-jobs-${var.environment}"
+  description   = "Trigger condicional: Quando Silver Crawler SUCCEEDED, inicia TRÊS Gold Jobs em PARALELO (SLIM optimized)"
   type          = "CONDITIONAL"
   workflow_name = aws_glue_workflow.silver_etl_workflow.name
   enabled       = true
 
-  # Ação: Iniciar o Gold Job
+  # ⚡ AÇÃO 1: Iniciar Gold Job - Car Current State
   actions {
     job_name = aws_glue_job.gold_car_current_state.name
+  }
+
+  # ⚡ AÇÃO 2: Iniciar Gold Job - Performance Alerts SLIM (PARALELO) ← SUBSTITUÍDO!
+  actions {
+    job_name = aws_glue_job.gold_performance_alerts_slim.name
+  }
+
+  # ⚡ AÇÃO 3: Iniciar Gold Job - Fuel Efficiency (PARALELO)
+  actions {
+    job_name = aws_glue_job.gold_fuel_efficiency.name
   }
 
   # Predicado: Observar o Silver Crawler e aguardar estado SUCCEEDED
@@ -118,11 +128,12 @@ resource "aws_glue_trigger" "silver_crawler_succeeded_start_gold_job" {
   tags = merge(
     var.common_tags,
     {
-      Name         = "${var.project_name}-silver-crawler-succeeded-start-gold-job-${var.environment}"
+      Name         = "${var.project_name}-silver-crawler-succeeded-start-gold-jobs-${var.environment}"
       TriggerType  = "CONDITIONAL"
       WorkflowName = aws_glue_workflow.silver_etl_workflow.name
       Condition    = "Silver-Crawler-SUCCEEDED"
       TargetLayer  = "Gold"
+      Execution    = "PARALLEL" # TRÊS jobs iniciam simultaneamente (alerts SLIM optimized)
     }
   )
 
@@ -195,17 +206,29 @@ output "workflow_trigger_schedule" {
 }
 
 output "workflow_summary" {
-  description = "Resumo da orquestração do Workflow completo (Silver + Gold)"
+  description = "Resumo da orquestração do Workflow completo (Silver + Dual Gold Pipelines)"
   value = {
-    workflow_name     = aws_glue_workflow.silver_etl_workflow.name
-    trigger_schedule  = var.glue_workflow_schedule
-    silver_job_name   = aws_glue_job.silver_consolidation.name
-    silver_crawler    = aws_glue_crawler.silver_crawler.name
-    gold_job_name     = aws_glue_job.gold_car_current_state.name
-    gold_crawler      = aws_glue_crawler.gold_car_current_state.name
-    flow              = "Scheduled → Silver Job → Silver Crawler → Gold Job → Gold Crawler → Athena"
-    total_triggers    = 4
-    automation_level  = "Fully Automated (End-to-End)"
-    latency           = "Near-zero (automatic execution chain)"
+    workflow_name              = aws_glue_workflow.silver_etl_workflow.name
+    trigger_schedule           = var.glue_workflow_schedule
+    
+    # Silver Layer
+    silver_job_name            = aws_glue_job.silver_consolidation.name
+    silver_crawler             = aws_glue_crawler.silver_crawler.name
+    
+    # Gold Layer - Pipeline 1: Car Current State
+    gold_current_state_job     = aws_glue_job.gold_car_current_state.name
+    gold_current_state_crawler = aws_glue_crawler.gold_car_current_state.name
+    
+    # Gold Layer - Pipeline 2: Performance Alerts (NEW)
+    gold_alerts_job            = aws_glue_job.gold_performance_alerts.name
+    gold_alerts_crawler        = aws_glue_crawler.gold_performance_alerts.name
+    
+    # Flow Architecture
+    flow                       = "Scheduled → Silver Job → Silver Crawler → [Gold Current State Job + Gold Alerts Job (PARALLEL)] → [Current State Crawler + Alerts Crawler] → Athena"
+    total_triggers             = 5  # 1 scheduled + 2 conditional (Silver) + 2 conditional (Gold)
+    gold_pipelines             = 2  # Dual Gold pipelines
+    execution_mode             = "PARALLEL" # Gold jobs run simultaneously
+    automation_level           = "Fully Automated (End-to-End with Dual Gold)"
+    latency                    = "Near-zero (automatic execution chain)"
   }
 }
