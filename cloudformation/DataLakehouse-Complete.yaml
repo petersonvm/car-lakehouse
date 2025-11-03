@@ -1,0 +1,1424 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse Infrastructure - Complete CloudFormation Template'
+
+# ============================================================================
+# METADATA
+# ============================================================================
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Project Configuration"
+        Parameters:
+          - ProjectName
+          - Environment
+          - AWSRegion
+      - Label:
+          default: "Storage Configuration"
+        Parameters:
+          - RetentionDays
+          - EnableLifecyclePolicies
+      - Label:
+          default: "ETL Configuration"
+        Parameters:
+          - GlueVersion
+          - WorkerType
+          - NumberOfWorkers
+          - EnableInsuranceKPIs
+      - Label:
+          default: "Workflow Configuration"
+        Parameters:
+          - WorkflowSchedule
+          - MaxConcurrentRuns
+      - Label:
+          default: "Analytics Configuration"
+        Parameters:
+          - BytesScannedLimit
+          - QueryTimeout
+    ParameterLabels:
+      ProjectName:
+        default: "Nome do Projeto"
+      Environment:
+        default: "Ambiente"
+      EnableInsuranceKPIs:
+        default: "Habilitar KPIs de Seguro"
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'datalake-pipeline'
+    Description: Nome do projeto para recursos
+    
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues: ['dev', 'staging', 'prod']
+    Description: Ambiente de deployment
+    
+  AWSRegion:
+    Type: String
+    Default: 'us-east-1'
+    Description: Região AWS para deployment
+    
+  RetentionDays:
+    Type: Number
+    Default: 90
+    MinValue: 30
+    MaxValue: 365
+    Description: Dias de retenção para lifecycle policies
+    
+  EnableLifecyclePolicies:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Habilitar políticas de lifecycle nos buckets
+    
+  GlueVersion:
+    Type: String
+    Default: '4.0'
+    AllowedValues: ['3.0', '4.0']
+    Description: Versão do AWS Glue
+    
+  WorkerType:
+    Type: String
+    Default: 'G.1X'
+    AllowedValues: ['G.1X', 'G.2X', 'G.025X']
+    Description: Tipo de worker Glue
+    
+  NumberOfWorkers:
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 10
+    Description: Número de workers Glue
+    
+  EnableInsuranceKPIs:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Habilitar KPIs de Seguro (insurance_status, insurance_days_expired)
+    
+  WorkflowSchedule:
+    Type: String
+    Default: 'cron(0 * * * ? *)'
+    Description: Schedule do workflow (hourly por padrão)
+    
+  MaxConcurrentRuns:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+    Description: Máximo de execuções simultâneas do workflow
+    
+  BytesScannedLimit:
+    Type: Number
+    Default: 1073741824
+    Description: Limite de bytes escaneados por query Athena (1GB padrão)
+    
+  QueryTimeout:
+    Type: Number
+    Default: 1800
+    Description: Timeout para queries Athena em segundos
+
+# ============================================================================
+# MAPPINGS
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      LogRetention: 7
+      WorkflowTimeout: 240
+      LambdaMemory: 512
+      LambdaConcurrency: 5
+    staging:
+      LogRetention: 14
+      WorkflowTimeout: 360
+      LambdaMemory: 1024
+      LambdaConcurrency: 10
+    prod:
+      LogRetention: 30
+      WorkflowTimeout: 480
+      LambdaMemory: 2048
+      LambdaConcurrency: 20
+
+# ============================================================================
+# CONDITIONS
+# ============================================================================
+Conditions:
+  EnableLifecyclePoliciesCondition: !Equals [!Ref EnableLifecyclePolicies, 'true']
+  EnableInsuranceKPIsCondition: !Equals [!Ref EnableInsuranceKPIs, 'true']
+  IsProduction: !Equals [!Ref Environment, 'prod']
+
+# ============================================================================
+# RESOURCES
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. S3 STORAGE (Medallion Architecture)
+  # ========================================================================
+  
+  LandingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-landing-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: LandingLifecycleRule
+            Status: !If [EnableLifecyclePoliciesCondition, 'Enabled', 'Disabled']
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+              - TransitionInDays: !Ref RetentionDays
+                StorageClass: GLACIER
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: Landing
+
+  BronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-bronze-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: BronzeLifecycleRule
+            Status: !If [EnableLifecyclePoliciesCondition, 'Enabled', 'Disabled']
+            Transitions:
+              - TransitionInDays: 60
+                StorageClass: STANDARD_IA
+              - TransitionInDays: !Ref RetentionDays
+                StorageClass: GLACIER
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: Bronze
+
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-silver-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: SilverLifecycleRule
+            Status: !If [EnableLifecyclePoliciesCondition, 'Enabled', 'Disabled']
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: STANDARD_IA
+              - TransitionInDays: !Ref RetentionDays
+                StorageClass: GLACIER
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: Silver
+
+  GoldBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-gold-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: GoldLifecycleRule
+            Status: !If [EnableLifecyclePoliciesCondition, 'Enabled', 'Disabled']
+            Transitions:
+              - TransitionInDays: 365
+                StorageClass: STANDARD_IA
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Layer
+          Value: Gold
+
+  GlueScriptsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-glue-scripts-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: GlueScripts
+
+  AthenaResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-athena-results-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: AthenaResultsLifecycleRule
+            Status: Enabled
+            ExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: AthenaResults
+
+  LambdaLayersBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-lambda-layers-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: LambdaLayers
+
+  GlueTempBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-glue-temp-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: GlueTempLifecycleRule
+            Status: Enabled
+            ExpirationInDays: 7
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: GlueTemp
+
+  # ========================================================================
+  # 2. IAM ROLES AND POLICIES
+  # ========================================================================
+  
+  # ========================================================================
+  # 2.1 Glue Job Role (Generic)
+  # ========================================================================
+  GlueJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-glue-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GlueJobS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${BronzeBucket}/*'
+                  - !Sub '${SilverBucket}/*'
+                  - !Sub '${GlueScriptsBucket}/*'
+                  - !Sub '${GlueTempBucket}/*'
+                  - !GetAtt BronzeBucket.Arn
+                  - !GetAtt SilverBucket.Arn
+                  - !GetAtt GlueScriptsBucket.Arn
+                  - !GetAtt GlueTempBucket.Arn
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:CreatePartition
+                  - glue:UpdatePartition
+                  - glue:DeletePartition
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Glue
+
+  # ========================================================================
+  # 2.2 Gold Job Role (Specific for Gold jobs with Insurance KPIs)
+  # ========================================================================
+  GoldJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: GoldJobS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${SilverBucket}/*'
+                  - !Sub '${GoldBucket}/*'
+                  - !Sub '${GoldBucket}/car_current_state/*'
+                  - !Sub '${GoldBucket}/performance_alerts_log/*'
+                  - !Sub '${GoldBucket}/performance_alerts_log_slim/*'
+                  - !Sub '${GoldBucket}/fuel_efficiency_monthly/*'
+                  - !Sub '${GlueScriptsBucket}/*'
+                  - !Sub '${GlueTempBucket}/*'
+                  - !GetAtt SilverBucket.Arn
+                  - !GetAtt GoldBucket.Arn
+                  - !GetAtt GlueScriptsBucket.Arn
+                  - !GetAtt GlueTempBucket.Arn
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:CreatePartition
+                  - glue:UpdatePartition
+                  - glue:DeletePartition
+                  - glue:UpdateTable
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Glue
+        - Key: Layer
+          Value: Gold
+
+  # ========================================================================
+  # 2.3 Glue Crawler Role
+  # ========================================================================
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-glue-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: CrawlerS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${BronzeBucket}/*'
+                  - !Sub '${SilverBucket}/*'
+                  - !Sub '${GoldBucket}/*'
+                  - !GetAtt BronzeBucket.Arn
+                  - !GetAtt SilverBucket.Arn
+                  - !GetAtt GoldBucket.Arn
+              - Effect: Allow
+                Action:
+                  - glue:CreateDatabase
+                  - glue:GetDatabase
+                  - glue:CreateTable
+                  - glue:GetTable
+                  - glue:UpdateTable
+                  - glue:DeleteTable
+                  - glue:CreatePartition
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                  - glue:UpdatePartition
+                  - glue:DeletePartition
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Glue
+        - Key: Type
+          Value: Crawler
+
+  # ========================================================================
+  # 2.4 Lambda Execution Role
+  # ========================================================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub '${LandingBucket}/*'
+                  - !Sub '${BronzeBucket}/*'
+                  - !Sub '${LambdaLayersBucket}/*'
+                  - !GetAtt LandingBucket.Arn
+                  - !GetAtt BronzeBucket.Arn
+                  - !GetAtt LambdaLayersBucket.Arn
+              - Effect: Allow
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRun
+                  - glue:GetJobRuns
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Lambda
+
+  # ========================================================================
+  # 2.5 Athena Execution Role
+  # ========================================================================
+  AthenaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-athena-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: athena.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AthenaS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Sub '${BronzeBucket}/*'
+                  - !Sub '${SilverBucket}/*'
+                  - !Sub '${GoldBucket}/*'
+                  - !GetAtt BronzeBucket.Arn
+                  - !GetAtt SilverBucket.Arn
+                  - !GetAtt GoldBucket.Arn
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Sub '${AthenaResultsBucket}/*'
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetPartition
+                  - glue:GetPartitions
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Athena
+
+  # ========================================================================
+  # 3. GLUE CATALOG (Database and Tables)
+  # ========================================================================
+  
+  # ========================================================================
+  # 3.1 Glue Database
+  # ========================================================================
+  DataLakeDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub '${ProjectName}-catalog-${Environment}'
+        Description: 'Data Lakehouse Catalog - Medallion Architecture with Insurance KPIs'
+        Parameters:
+          Project: !Ref ProjectName
+          Environment: !Ref Environment
+          Architecture: Medallion
+          InsuranceKPIs: !Ref EnableInsuranceKPIs
+          CreatedBy: CloudFormation
+
+  # ========================================================================
+  # 3.2 Gold Car Current State Table (with Insurance KPIs)
+  # ========================================================================
+  GoldCarCurrentStateTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: gold_car_current_state
+        Description: 'Gold layer - Car Current State with Insurance KPIs'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          has_encrypted_data: 'false'
+          InsuranceKPIsEnabled: !Ref EnableInsuranceKPIs
+        StorageDescriptor:
+          Location: !Sub 's3://${GoldBucket}/car_current_state/'
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            # Dados básicos do veículo
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi'
+            - Name: model
+              Type: string
+              Comment: 'Modelo do veículo'
+            - Name: year
+              Type: bigint
+              Comment: 'Ano de fabricação'
+            - Name: modelyear
+              Type: bigint
+              Comment: 'Ano do modelo'
+            - Name: manufacturer
+              Type: string
+              Comment: 'Fabricante'
+            - Name: horsepower
+              Type: bigint
+              Comment: 'Potência em cavalos'
+            - Name: gastype
+              Type: string
+              Comment: 'Tipo de combustível'
+            - Name: currentmileage
+              Type: bigint
+              Comment: 'Quilometragem atual'
+            - Name: color
+              Type: string
+              Comment: 'Cor do veículo'
+            - Name: fuelcapacityliters
+              Type: bigint
+              Comment: 'Capacidade do tanque'
+            # Métricas atuais
+            - Name: metrics_enginetempcelsius
+              Type: bigint
+              Comment: 'Temperatura do motor'
+            - Name: metrics_oiltempcelsius
+              Type: bigint
+              Comment: 'Temperatura do óleo'
+            - Name: metrics_batterychargeper
+              Type: bigint
+              Comment: 'Carga da bateria (%)'
+            - Name: metrics_fuelavailableliters
+              Type: double
+              Comment: 'Combustível disponível'
+            - Name: metrics_coolantcelsius
+              Type: bigint
+              Comment: 'Temperatura do radiador'
+            - Name: metrics_metrictimestamp
+              Type: string
+              Comment: 'Timestamp da métrica'
+            # Trip atual
+            - Name: metrics_trip_tripmileage
+              Type: bigint
+              Comment: 'Quilometragem da viagem'
+            - Name: metrics_trip_triptimeminutes
+              Type: bigint
+              Comment: 'Duração da viagem'
+            - Name: metrics_trip_tripfuelliters
+              Type: double
+              Comment: 'Combustível da viagem'
+            - Name: metrics_trip_tripmaxspeedkm
+              Type: bigint
+              Comment: 'Velocidade máxima'
+            - Name: metrics_trip_tripaveragespeedkm
+              Type: bigint
+              Comment: 'Velocidade média'
+            - Name: metrics_trip_tripstarttimestamp
+              Type: string
+              Comment: 'Início da viagem'
+            # Insurance
+            - Name: carinsurance_number
+              Type: string
+              Comment: 'Número da apólice'
+            - Name: carinsurance_provider
+              Type: string
+              Comment: 'Seguradora'
+            - Name: carinsurance_validuntil
+              Type: string
+              Comment: 'Validade do seguro'
+            # Market
+            - Name: market_currentprice
+              Type: bigint
+              Comment: 'Preço atual'
+            - Name: market_currency
+              Type: string
+              Comment: 'Moeda'
+            - Name: market_location
+              Type: string
+              Comment: 'Localização'
+            - Name: market_dealer
+              Type: string
+              Comment: 'Concessionária'
+            - Name: market_warrantyyears
+              Type: bigint
+              Comment: 'Anos de garantia'
+            - Name: market_evaluator
+              Type: string
+              Comment: 'Avaliador'
+            # Event partitions
+            - Name: event_year
+              Type: string
+              Comment: 'Ano do evento'
+            - Name: event_month
+              Type: string
+              Comment: 'Mês do evento'
+            - Name: event_day
+              Type: string
+              Comment: 'Dia do evento'
+            # *** INSURANCE KPIs ***
+            - Name: insurance_status
+              Type: string
+              Comment: 'Status: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO'
+            - Name: insurance_days_expired
+              Type: int
+              Comment: 'Dias desde o vencimento'
+            # Metadados Gold
+            - Name: gold_processing_timestamp
+              Type: timestamp
+              Comment: 'Timestamp de processamento'
+            - Name: gold_snapshot_date
+              Type: date
+              Comment: 'Data do snapshot'
+
+  # ========================================================================
+  # 4. GLUE JOBS
+  # ========================================================================
+  
+  # ========================================================================
+  # 4.1 Silver Consolidation Job
+  # ========================================================================
+  SilverConsolidationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-silver-consolidation-${Environment}'
+      Description: 'Silver ETL - Flattens nested JSON from Bronze to Silver'
+      Role: !GetAtt GlueJobRole.Arn
+      GlueVersion: !Ref GlueVersion
+      WorkerType: !Ref WorkerType
+      NumberOfWorkers: !Ref NumberOfWorkers
+      MaxConcurrentRuns: !Ref MaxConcurrentRuns
+      Timeout: 60
+      MaxRetries: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucket}/glue_jobs/silver_consolidation_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucket}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucket}/temporary/'
+        '--source_database': !Ref DataLakeDatabase
+        '--source_table': 'bronze_car_data'
+        '--target_database': !Ref DataLakeDatabase
+        '--target_table': 'silver_car_telemetry'
+        '--target_s3_path': !Sub 's3://${SilverBucket}/car_telemetry/'
+        '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Silver
+
+  # ========================================================================
+  # 4.2 Gold Car Current State Job (with Insurance KPIs)
+  # ========================================================================
+  GoldCarCurrentStateJob:
+    Type: AWS::Glue::Job
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      Name: !Sub '${ProjectName}-gold-car-current-state-${Environment}'
+      Description: 'Gold ETL - Creates current state with Insurance KPIs'
+      Role: !GetAtt GoldJobRole.Arn
+      GlueVersion: !Ref GlueVersion
+      WorkerType: !Ref WorkerType
+      NumberOfWorkers: !Ref NumberOfWorkers
+      MaxConcurrentRuns: 1
+      Timeout: 60
+      MaxRetries: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucket}/glue_jobs/gold_car_current_state_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucket}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucket}/temporary/'
+        '--source_database': !Ref DataLakeDatabase
+        '--source_table': 'silver_car_telemetry'
+        '--target_database': !Ref DataLakeDatabase
+        '--target_table': 'gold_car_current_state'
+        '--target_s3_path': !Sub 's3://${GoldBucket}/car_current_state/'
+        '--environment': !Ref Environment
+        '--write_mode': 'overwrite'
+        '--enable_insurance_kpis': !Ref EnableInsuranceKPIs
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        KPIs: Insurance
+
+  # ========================================================================
+  # 5. GLUE CRAWLERS
+  # ========================================================================
+  
+  # ========================================================================
+  # 5.1 Bronze Crawler
+  # ========================================================================
+  BronzeCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-bronze-crawler-${Environment}'
+      Description: 'Crawler for Bronze layer'
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref DataLakeDatabase
+      Schedule:
+        ScheduleExpression: 'cron(0 */6 * * ? *)'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${BronzeBucket}/bronze/car_data/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Bronze
+
+  # ========================================================================
+  # 5.2 Silver Crawler
+  # ========================================================================
+  SilverCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-silver-crawler-${Environment}'
+      Description: 'Crawler for Silver layer'
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref DataLakeDatabase
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${SilverBucket}/car_telemetry/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Silver
+
+  # ========================================================================
+  # 5.3 Gold Current State Crawler
+  # ========================================================================
+  GoldCurrentStateCrawler:
+    Type: AWS::Glue::Crawler
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      Name: !Sub '${ProjectName}-gold-current-state-crawler-${Environment}'
+      Description: 'Crawler for Gold Current State (with Insurance KPIs)'
+      Role: !GetAtt GlueCrawlerRole.Arn
+      DatabaseName: !Ref DataLakeDatabase
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GoldBucket}/car_current_state/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        KPIs: Insurance
+
+  # ========================================================================
+  # 6. GLUE WORKFLOW
+  # ========================================================================
+  
+  # ========================================================================
+  # 6.1 Data Lakehouse Workflow
+  # ========================================================================
+  DataLakehouseWorkflow:
+    Type: AWS::Glue::Workflow
+    Properties:
+      Name: !Sub '${ProjectName}-etl-workflow-${Environment}'
+      Description: !Sub |
+        Data Lakehouse ETL Workflow - ${Environment}
+        
+        Insurance KPIs: ${EnableInsuranceKPIs}
+        Schedule: ${WorkflowSchedule}
+        Max Concurrent: ${MaxConcurrentRuns}
+      DefaultRunProperties:
+        glue.workflow.timeout: !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowTimeout]
+        glue.workflow.maxConcurrentRuns: !Ref MaxConcurrentRuns
+        glue.workflow.environment: !Ref Environment
+        glue.workflow.project: !Ref ProjectName
+        glue.workflow.insurance_kpis: !Ref EnableInsuranceKPIs
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        WorkflowType: ETL
+
+  # ========================================================================
+  # 6.2 Scheduled Start Trigger
+  # ========================================================================
+  ScheduledStartTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-scheduled-start-trigger-${Environment}'
+      Description: 'SCHEDULED Trigger - Starts workflow automatically'
+      Type: SCHEDULED
+      Schedule: !Ref WorkflowSchedule
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Actions:
+        - JobName: !Ref SilverConsolidationJob
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--triggered-by': 'scheduled-start'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Scheduled
+
+  # ========================================================================
+  # 6.3 Silver Job to Silver Crawler Trigger
+  # ========================================================================
+  SilverJobToSilverCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-silver-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL - Silver Job SUCCESS → Silver Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref SilverConsolidationJob
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref SilverCrawler
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--triggered-by': 'silver-job-success'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+
+  # ========================================================================
+  # 6.4 Silver Crawler to Gold Current State Job Trigger
+  # ========================================================================
+  SilverCrawlerToGoldJobTrigger:
+    Type: AWS::Glue::Trigger
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      Name: !Sub '${ProjectName}-silver-crawler-to-gold-job-trigger-${Environment}'
+      Description: 'CONDITIONAL - Silver Crawler SUCCESS → Gold Current State Job'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            CrawlerName: !Ref SilverCrawler
+            CrawlState: SUCCEEDED
+        Logical: AND
+      Actions:
+        - JobName: !Ref GoldCarCurrentStateJob
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--triggered-by': 'silver-crawler-success'
+            '--enable-insurance-kpis': !Ref EnableInsuranceKPIs
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+
+  # ========================================================================
+  # 6.5 Gold Job to Gold Crawler Trigger
+  # ========================================================================
+  GoldJobToGoldCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      Name: !Sub '${ProjectName}-gold-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL - Gold Job SUCCESS → Gold Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref GoldCarCurrentStateJob
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref GoldCurrentStateCrawler
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--triggered-by': 'gold-job-success'
+            '--insurance-kpis-enabled': !Ref EnableInsuranceKPIs
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+
+  # ========================================================================
+  # 7. LAMBDA FUNCTIONS (Optional)
+  # ========================================================================
+  
+  # ========================================================================
+  # 7.1 Data Ingestion Function
+  # ========================================================================
+  DataIngestionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-data-ingestion-${Environment}'
+      Description: 'Data Ingestion Function - Landing to Bronze'
+      Runtime: python3.11
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(f"Data ingestion triggered: {json.dumps(event)}")
+              
+              # Process S3 event
+              for record in event.get('Records', []):
+                  bucket = record['s3']['bucket']['name']
+                  key = record['s3']['object']['key']
+                  
+                  logger.info(f"Processing: s3://{bucket}/{key}")
+                  
+                  # Add your ingestion logic here
+                  # Convert JSON to Parquet and move to Bronze
+              
+              return {
+                  'statusCode': 200,
+                  'body': json.dumps('Data ingestion completed')
+              }
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowTimeout]
+      MemorySize: !FindInMap [EnvironmentConfig, !Ref Environment, LambdaMemory]
+      ReservedConcurrentExecutions: !FindInMap [EnvironmentConfig, !Ref Environment, LambdaConcurrency]
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+          BRONZE_BUCKET: !Ref BronzeBucket
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Function
+          Value: DataIngestion
+
+  # ========================================================================
+  # 8. ATHENA CONFIGURATION
+  # ========================================================================
+  
+  # ========================================================================
+  # 8.1 Athena Workgroup
+  # ========================================================================
+  DataLakehouseWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub '${ProjectName}-analytics-workgroup-${Environment}'
+      Description: !Sub 'Data Lakehouse Analytics Workgroup - ${Environment} (Insurance KPIs: ${EnableInsuranceKPIs})'
+      State: ENABLED
+      WorkGroupConfiguration:
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${AthenaResultsBucket}/query-results/'
+          EncryptionConfiguration:
+            EncryptionOption: SSE_S3
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetrics: true
+        BytesScannedCutoffPerQuery: !Ref BytesScannedLimit
+        EngineVersion:
+          SelectedEngineVersion: 'Athena engine version 3'
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Athena
+
+  # ========================================================================
+  # 8.2 Insurance KPIs Query
+  # ========================================================================
+  InsuranceKPIsQuery:
+    Type: AWS::Athena::NamedQuery
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      Name: !Sub '${ProjectName}-insurance-kpis-${Environment}'
+      Description: 'Insurance KPIs Analysis - Status distribution and expiration analytics'
+      Database: !Ref DataLakeDatabase
+      QueryString: !Sub |
+        -- Insurance KPIs Analysis
+        -- Status distribution and expiration patterns
+        SELECT 
+          insurance_status,
+          COUNT(*) as vehicle_count,
+          ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as percentage,
+          AVG(CASE 
+            WHEN insurance_status = 'VENCIDO' THEN insurance_days_expired 
+            ELSE NULL 
+          END) as avg_days_expired,
+          MAX(CASE 
+            WHEN insurance_status = 'VENCIDO' THEN insurance_days_expired 
+            ELSE NULL 
+          END) as max_days_expired
+        FROM ${DataLakeDatabase}.gold_car_current_state
+        WHERE insurance_status IS NOT NULL
+        GROUP BY insurance_status
+        ORDER BY 
+          CASE insurance_status
+            WHEN 'VENCIDO' THEN 1
+            WHEN 'VENCENDO_EM_90_DIAS' THEN 2
+            WHEN 'ATIVO' THEN 3
+            ELSE 4
+          END;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+  # ========================================================================
+  # 9. CLOUDWATCH LOG GROUPS
+  # ========================================================================
+  
+  SilverJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${SilverConsolidationJob}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, LogRetention]
+
+  GoldJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: EnableInsuranceKPIsCondition
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${GoldCarCurrentStateJob}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, LogRetention]
+
+  WorkflowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/workflows/${DataLakehouseWorkflow}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, LogRetention]
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # S3 Buckets
+  # ========================================================================
+  LandingBucketName:
+    Description: Nome do bucket Landing
+    Value: !Ref LandingBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-landing-bucket'
+      
+  BronzeBucketName:
+    Description: Nome do bucket Bronze
+    Value: !Ref BronzeBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-bucket'
+      
+  SilverBucketName:
+    Description: Nome do bucket Silver
+    Value: !Ref SilverBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-bucket'
+      
+  GoldBucketName:
+    Description: Nome do bucket Gold
+    Value: !Ref GoldBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-bucket'
+      
+  # ========================================================================
+  # Database and Tables
+  # ========================================================================
+  DatabaseName:
+    Description: Nome do Glue Database
+    Value: !Ref DataLakeDatabase
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-database'
+      
+  GoldTableName:
+    Description: Nome da tabela Gold Current State
+    Value: !Ref GoldCarCurrentStateTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-table'
+      
+  # ========================================================================
+  # Jobs and Workflow
+  # ========================================================================
+  SilverJobName:
+    Description: Nome do Silver Job
+    Value: !Ref SilverConsolidationJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-job'
+      
+  GoldJobName:
+    Description: Nome do Gold Job (se habilitado)
+    Condition: EnableInsuranceKPIsCondition
+    Value: !Ref GoldCarCurrentStateJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-job'
+      
+  WorkflowName:
+    Description: Nome do Workflow
+    Value: !Ref DataLakehouseWorkflow
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow'
+      
+  # ========================================================================
+  # Athena Configuration
+  # ========================================================================
+  AthenaWorkgroupName:
+    Description: Nome do Athena Workgroup
+    Value: !Ref DataLakehouseWorkgroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-workgroup'
+      
+  QueryResultsLocation:
+    Description: Localização dos resultados Athena
+    Value: !Sub 's3://${AthenaResultsBucket}/query-results/'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-query-results'
+      
+  # ========================================================================
+  # Configuration Summary
+  # ========================================================================
+  InfrastructureSummary:
+    Description: Resumo da infraestrutura implantada
+    Value: !Sub |
+      Data Lakehouse Infrastructure - ${Environment}
+      ==========================================
+      
+      Configuration:
+      - Project: ${ProjectName}
+      - Environment: ${Environment}
+      - Insurance KPIs: ${EnableInsuranceKPIs}
+      - Workflow Schedule: ${WorkflowSchedule}
+      - Glue Version: ${GlueVersion}
+      - Worker Type: ${WorkerType}
+      - Workers: ${NumberOfWorkers}
+      
+      S3 Buckets (8):
+      - Landing: ${LandingBucket}
+      - Bronze: ${BronzeBucket}
+      - Silver: ${SilverBucket}
+      - Gold: ${GoldBucket}
+      - Scripts: ${GlueScriptsBucket}
+      - Results: ${AthenaResultsBucket}
+      - Layers: ${LambdaLayersBucket}
+      - Temp: ${GlueTempBucket}
+      
+      Glue Components:
+      - Database: ${DataLakeDatabase}
+      - Silver Job: ${SilverConsolidationJob}
+      - Gold Job: ${GoldCarCurrentStateJob} (Insurance KPIs)
+      - Workflow: ${DataLakehouseWorkflow}
+      - Crawlers: Bronze, Silver, Gold
+      
+      Athena Analytics:
+      - Workgroup: ${DataLakehouseWorkgroup}
+      - Results: s3://${AthenaResultsBucket}/query-results/
+      - Bytes Limit: ${BytesScannedLimit}
+      
+      *** INSURANCE KPIs ENABLED ***
+      - insurance_status: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO
+      - insurance_days_expired: Days since expiration
+      
+      Ready for deployment and analytics!

@@ -1,0 +1,38 @@
+# Script para desabilitar o job bookmark temporariamente
+$jobUpdate = @{
+    "Role" = "arn:aws:iam::901207488135:role/datalake-pipeline-glue-job-role-dev"
+    "Command" = @{
+        "Name" = "glueetl"
+        "ScriptLocation" = "s3://datalake-pipeline-glue-scripts-dev/glue_jobs/silver_consolidation_job.py"
+        "PythonVersion" = "3"
+    }
+    "DefaultArguments" = @{
+        "--silver_database" = "datalake-pipeline-catalog-dev"
+        "--silver_path" = "car_telemetry/"
+        "--enable-glue-datacatalog" = "true"
+        "--bronze_table" = "bronze_ingest_year_2025"
+        "--job-bookmark-option" = "job-bookmark-disable"
+        "--TempDir" = "s3://datalake-pipeline-glue-temp-dev/temp/"
+        "--bronze_database" = "datalake-pipeline-catalog-dev"
+        "--silver_bucket" = "datalake-pipeline-silver-dev"
+        "--enable-spark-ui" = "true"
+        "--enable-metrics" = "true"
+        "--silver_table" = "silver_car_telemetry"
+        "--conf" = "spark.sql.sources.partitionOverwriteMode=dynamic"
+        "--enable-continuous-cloudwatch-log" = "true"
+        "--enable-auto-scaling" = "true"
+    }
+    "MaxRetries" = 1
+    "Timeout" = 60
+    "MaxCapacity" = 2.0
+    "WorkerType" = "G.1X"
+    "NumberOfWorkers" = 2
+    "GlueVersion" = "4.0"
+}
+
+$jobUpdateJson = $jobUpdate | ConvertTo-Json -Depth 10
+
+Write-Host "Atualizando job para desabilitar bookmark..."
+aws glue update-job --job-name "datalake-pipeline-silver-consolidation-dev" --job-update $jobUpdateJson
+
+Write-Host "Job atualizado com sucesso!"
