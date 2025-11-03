@@ -1,0 +1,665 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Athena Stack (Query Engine and Analytics)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Bucket Names (vindos do StorageStack)
+  AthenaResultsBucketName:
+    Type: String
+    Description: Nome do bucket para resultados Athena
+    
+  # Database Name (vindo do GlueCatalogStack)
+  DatabaseName:
+    Type: String
+    Description: Nome do Glue Database
+    
+  # IAM Role (vindo do IAMStack)
+  AthenaExecutionRoleArn:
+    Type: String
+    Description: ARN do IAM Role para execução Athena
+
+# ============================================================================
+# MAPPINGS - Environment Configuration
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      EngineVersion: 'Athena engine version 3'
+      BytesScannedCutoffPerQuery: 1073741824     # 1 GB
+      ResultRetentionDays: 7
+      QueryExecutionTimeout: 1800                # 30 minutes
+    staging:
+      EngineVersion: 'Athena engine version 3'
+      BytesScannedCutoffPerQuery: 5368709120     # 5 GB
+      ResultRetentionDays: 14
+      QueryExecutionTimeout: 3600                # 1 hour
+    prod:
+      EngineVersion: 'Athena engine version 3'
+      BytesScannedCutoffPerQuery: 10737418240    # 10 GB
+      ResultRetentionDays: 30
+      QueryExecutionTimeout: 7200                # 2 hours
+
+# ============================================================================
+# RESOURCES - Athena Configuration and Analytics
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. ATHENA WORKGROUP
+  # ========================================================================
+  DataLakehouseWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub '${ProjectName}-analytics-workgroup-${Environment}'
+      Description: !Sub |
+        Data Lakehouse Analytics Workgroup - ${Environment}
+        ==================================================
+        
+        Dedicated workgroup for data analytics and reporting:
+        ✅ Query result location configured
+        ✅ Cost controls with bytes scanned limit
+        ✅ Query execution timeout
+        ✅ Result encryption enabled
+        ✅ CloudWatch metrics enabled
+        ✅ Sample queries for Insurance KPIs
+        
+        Insurance KPIs Available:
+        - insurance_status (VENCIDO, VENCENDO_EM_90_DIAS, ATIVO)
+        - insurance_days_expired (days since expiration)
+        
+        Tables Available:
+        - bronze_car_data (raw nested JSON)
+        - silver_car_telemetry (flat structure)
+        - gold_car_current_state (current state + Insurance KPIs)
+        - performance_alerts_log_slim (optimized alerts)
+        - fuel_efficiency_monthly (monthly analytics)
+      State: ENABLED
+      WorkGroupConfiguration:
+        # Result Configuration
+        ResultConfiguration:
+          OutputLocation: !Sub 's3://${AthenaResultsBucketName}/query-results/'
+          EncryptionConfiguration:
+            EncryptionOption: SSE_S3
+        # Performance and Cost Controls
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetrics: true
+        BytesScannedCutoffPerQuery: !FindInMap [EnvironmentConfig, !Ref Environment, BytesScannedCutoffPerQuery]
+        # Engine Configuration
+        EngineVersion:
+          SelectedEngineVersion: !FindInMap [EnvironmentConfig, !Ref Environment, EngineVersion]
+        # Additional Settings
+        ResultConfigurationUpdates:
+          RemoveOutputLocation: false
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Service
+          Value: Athena
+        - Key: Purpose
+          Value: DataAnalytics
+
+  # ========================================================================
+  # 2. ATHENA DATA CATALOG (Integration with Glue)
+  # ========================================================================
+  DataLakehouseDataCatalog:
+    Type: AWS::Athena::DataCatalog
+    Properties:
+      Name: !Sub '${ProjectName}-data-catalog-${Environment}'
+      Description: !Sub 'Data Lakehouse Catalog integration for ${Environment} environment'
+      Type: GLUE
+      Parameters:
+        catalog-id: !Ref AWS::AccountId
+        metadata-function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-catalog-function-${Environment}'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        CatalogType: Glue
+
+  # ========================================================================
+  # 3. CLOUDWATCH LOG GROUP (Query Monitoring)
+  # ========================================================================
+  AthenaQueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/athena/workgroup/${ProjectName}-analytics-workgroup-${Environment}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, ResultRetentionDays]
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: LogType
+          Value: AthenaQueries
+
+  # ========================================================================
+  # 4. NAMED QUERIES (Sample Analytics Queries)
+  # ========================================================================
+  
+  # ========================================================================
+  # 4.1 Insurance KPIs Query
+  # ========================================================================
+  InsuranceKPIsQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: !Sub '${ProjectName}-insurance-kpis-${Environment}'
+      Description: 'Insurance KPIs Analysis - Status distribution and expiration analytics'
+      Database: !Ref DatabaseName
+      QueryString: !Sub |
+        -- Insurance KPIs Analysis
+        -- ========================
+        -- Analyzes insurance status distribution and expiration patterns
+        
+        WITH insurance_summary AS (
+          SELECT 
+            insurance_status,
+            COUNT(*) as vehicle_count,
+            ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as percentage,
+            AVG(CASE 
+              WHEN insurance_status = 'VENCIDO' THEN insurance_days_expired 
+              ELSE NULL 
+            END) as avg_days_expired,
+            MAX(CASE 
+              WHEN insurance_status = 'VENCIDO' THEN insurance_days_expired 
+              ELSE NULL 
+            END) as max_days_expired
+          FROM ${DatabaseName}.gold_car_current_state
+          WHERE insurance_status IS NOT NULL
+          GROUP BY insurance_status
+        ),
+        critical_vehicles AS (
+          SELECT 
+            carchassis,
+            manufacturer,
+            model,
+            carinsurance_provider,
+            carinsurance_validuntil,
+            insurance_status,
+            insurance_days_expired
+          FROM ${DatabaseName}.gold_car_current_state
+          WHERE insurance_status = 'VENCIDO' 
+            AND insurance_days_expired > 30
+          ORDER BY insurance_days_expired DESC
+          LIMIT 10
+        )
+        
+        SELECT 
+          'SUMMARY' as report_section,
+          insurance_status,
+          vehicle_count,
+          percentage,
+          COALESCE(avg_days_expired, 0) as avg_days_expired,
+          COALESCE(max_days_expired, 0) as max_days_expired,
+          NULL as carchassis,
+          NULL as manufacturer,
+          NULL as model,
+          NULL as provider
+        FROM insurance_summary
+        
+        UNION ALL
+        
+        SELECT 
+          'CRITICAL_VEHICLES' as report_section,
+          insurance_status,
+          NULL as vehicle_count,
+          NULL as percentage,
+          insurance_days_expired as avg_days_expired,
+          NULL as max_days_expired,
+          carchassis,
+          manufacturer,
+          model,
+          carinsurance_provider as provider
+        FROM critical_vehicles
+        
+        ORDER BY 
+          report_section DESC,
+          CASE report_section 
+            WHEN 'SUMMARY' THEN insurance_status 
+            ELSE NULL 
+          END,
+          avg_days_expired DESC;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+  # ========================================================================
+  # 4.2 Current State Overview Query
+  # ========================================================================
+  CurrentStateOverviewQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: !Sub '${ProjectName}-current-state-overview-${Environment}'
+      Description: 'Current State Overview - Complete vehicle status with Insurance KPIs'
+      Database: !Ref DatabaseName
+      QueryString: !Sub |
+        -- Current State Overview with Insurance KPIs
+        -- ==========================================
+        
+        SELECT 
+          -- Vehicle Information
+          carchassis,
+          manufacturer,
+          model,
+          year,
+          color,
+          currentmileage,
+          
+          -- Insurance KPIs
+          insurance_status,
+          insurance_days_expired,
+          carinsurance_provider,
+          carinsurance_validuntil,
+          
+          -- Current Metrics
+          metrics_enginetempcelsius,
+          metrics_batterychargeper,
+          metrics_fuelavailableliters,
+          
+          -- Market Information
+          market_currentprice,
+          market_currency,
+          
+          -- Processing Metadata
+          gold_processing_timestamp,
+          gold_snapshot_date
+          
+        FROM ${DatabaseName}.gold_car_current_state
+        ORDER BY 
+          CASE insurance_status
+            WHEN 'VENCIDO' THEN 1
+            WHEN 'VENCENDO_EM_90_DIAS' THEN 2
+            WHEN 'ATIVO' THEN 3
+            ELSE 4
+          END,
+          insurance_days_expired DESC NULLS LAST,
+          carchassis;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+  # ========================================================================
+  # 4.3 Performance Alerts Analysis Query
+  # ========================================================================
+  PerformanceAlertsQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: !Sub '${ProjectName}-performance-alerts-analysis-${Environment}'
+      Description: 'Performance Alerts Analysis - Alert trends and vehicle performance issues'
+      Database: !Ref DatabaseName
+      QueryString: !Sub |
+        -- Performance Alerts Analysis
+        -- ============================
+        
+        WITH alert_summary AS (
+          SELECT 
+            alert_type,
+            COUNT(*) as alert_count,
+            COUNT(DISTINCT carchassis) as affected_vehicles,
+            AVG(alert_value) as avg_alert_value,
+            MAX(alert_value) as max_alert_value,
+            MIN(alert_value) as min_alert_value
+          FROM ${DatabaseName}.performance_alerts_log_slim
+          WHERE event_year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
+            AND event_month = LPAD(CAST(MONTH(CURRENT_DATE) AS VARCHAR), 2, '0')
+          GROUP BY alert_type
+        ),
+        top_problem_vehicles AS (
+          SELECT 
+            carchassis,
+            alert_type,
+            COUNT(*) as alert_frequency,
+            AVG(alert_value) as avg_severity,
+            MAX(metrics_metrictimestamp) as last_alert_time
+          FROM ${DatabaseName}.performance_alerts_log_slim
+          WHERE event_year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
+            AND event_month = LPAD(CAST(MONTH(CURRENT_DATE) AS VARCHAR), 2, '0')
+          GROUP BY carchassis, alert_type
+          HAVING COUNT(*) >= 3
+          ORDER BY alert_frequency DESC, avg_severity DESC
+          LIMIT 20
+        )
+        
+        SELECT 
+          'ALERT_SUMMARY' as report_section,
+          alert_type,
+          alert_count,
+          affected_vehicles,
+          ROUND(avg_alert_value, 2) as avg_value,
+          max_alert_value as max_value,
+          NULL as carchassis,
+          NULL as frequency,
+          NULL as last_alert
+        FROM alert_summary
+        
+        UNION ALL
+        
+        SELECT 
+          'PROBLEM_VEHICLES' as report_section,
+          alert_type,
+          NULL as alert_count,
+          NULL as affected_vehicles,
+          ROUND(avg_severity, 2) as avg_value,
+          NULL as max_value,
+          carchassis,
+          alert_frequency as frequency,
+          last_alert_time as last_alert
+        FROM top_problem_vehicles
+        
+        ORDER BY 
+          report_section DESC,
+          alert_type,
+          frequency DESC NULLS LAST;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+  # ========================================================================
+  # 4.4 Fuel Efficiency Analytics Query
+  # ========================================================================
+  FuelEfficiencyQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: !Sub '${ProjectName}-fuel-efficiency-analytics-${Environment}'
+      Description: 'Fuel Efficiency Analytics - Monthly consumption patterns and efficiency trends'
+      Database: !Ref DatabaseName
+      QueryString: !Sub |
+        -- Fuel Efficiency Analytics
+        -- ==========================
+        
+        WITH monthly_trends AS (
+          SELECT 
+            event_year,
+            event_month,
+            manufacturer,
+            COUNT(DISTINCT carchassis) as vehicle_count,
+            AVG(km_per_liter) as avg_efficiency,
+            AVG(total_fuel) as avg_fuel_consumption,
+            AVG(total_mileage) as avg_mileage,
+            AVG(avg_speed) as avg_speed
+          FROM ${DatabaseName}.fuel_efficiency_monthly
+          WHERE event_year IN (
+            CAST(YEAR(CURRENT_DATE) AS VARCHAR),
+            CAST(YEAR(CURRENT_DATE) - 1 AS VARCHAR)
+          )
+          GROUP BY event_year, event_month, manufacturer
+        ),
+        efficiency_ranking AS (
+          SELECT 
+            carchassis,
+            manufacturer,
+            model,
+            AVG(km_per_liter) as avg_efficiency,
+            AVG(total_fuel) as avg_fuel_monthly,
+            COUNT(*) as months_tracked,
+            RANK() OVER (ORDER BY AVG(km_per_liter) DESC) as efficiency_rank
+          FROM ${DatabaseName}.fuel_efficiency_monthly
+          WHERE event_year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
+          GROUP BY carchassis, manufacturer, model
+          HAVING COUNT(*) >= 3
+        )
+        
+        SELECT 
+          'MONTHLY_TRENDS' as report_section,
+          event_year,
+          event_month,
+          manufacturer,
+          vehicle_count,
+          ROUND(avg_efficiency, 2) as efficiency_kml,
+          ROUND(avg_fuel_consumption, 2) as fuel_consumption,
+          ROUND(avg_mileage, 2) as mileage,
+          NULL as carchassis,
+          NULL as model,
+          NULL as efficiency_rank
+        FROM monthly_trends
+        
+        UNION ALL
+        
+        SELECT 
+          'TOP_EFFICIENT' as report_section,
+          NULL as event_year,
+          NULL as event_month,
+          manufacturer,
+          months_tracked as vehicle_count,
+          ROUND(avg_efficiency, 2) as efficiency_kml,
+          ROUND(avg_fuel_monthly, 2) as fuel_consumption,
+          NULL as mileage,
+          carchassis,
+          model,
+          efficiency_rank
+        FROM efficiency_ranking
+        WHERE efficiency_rank <= 10
+        
+        ORDER BY 
+          report_section DESC,
+          event_year DESC NULLS LAST,
+          event_month DESC NULLS LAST,
+          efficiency_rank ASC NULLS LAST,
+          efficiency_kml DESC NULLS LAST;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+  # ========================================================================
+  # 4.5 Data Quality Monitoring Query
+  # ========================================================================
+  DataQualityQuery:
+    Type: AWS::Athena::NamedQuery
+    Properties:
+      Name: !Sub '${ProjectName}-data-quality-monitoring-${Environment}'
+      Description: 'Data Quality Monitoring - Schema validation and data completeness checks'
+      Database: !Ref DatabaseName
+      QueryString: !Sub |
+        -- Data Quality Monitoring
+        -- ========================
+        
+        WITH silver_quality AS (
+          SELECT 
+            'SILVER' as layer,
+            COUNT(*) as total_records,
+            COUNT(DISTINCT carchassis) as unique_vehicles,
+            COUNT(CASE WHEN metrics_metrictimestamp IS NULL THEN 1 END) as missing_timestamps,
+            COUNT(CASE WHEN carinsurance_validuntil IS NULL THEN 1 END) as missing_insurance,
+            COUNT(CASE WHEN manufacturer IS NULL OR manufacturer = '' THEN 1 END) as missing_manufacturer,
+            AVG(CASE WHEN metrics_enginetempcelsius BETWEEN 0 AND 150 THEN 1.0 ELSE 0.0 END) * 100 as valid_engine_temp_pct,
+            AVG(CASE WHEN metrics_fuelavailableliters BETWEEN 0 AND 200 THEN 1.0 ELSE 0.0 END) * 100 as valid_fuel_pct
+          FROM ${DatabaseName}.silver_car_telemetry
+          WHERE event_year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
+            AND event_month = LPAD(CAST(MONTH(CURRENT_DATE) AS VARCHAR), 2, '0')
+        ),
+        gold_current_state_quality AS (
+          SELECT 
+            'GOLD_CURRENT_STATE' as layer,
+            COUNT(*) as total_records,
+            COUNT(DISTINCT carchassis) as unique_vehicles,
+            COUNT(CASE WHEN insurance_status IS NULL THEN 1 END) as missing_insurance_status,
+            COUNT(CASE WHEN gold_processing_timestamp IS NULL THEN 1 END) as missing_processing_timestamp,
+            COUNT(CASE WHEN carinsurance_validuntil IS NULL THEN 1 END) as missing_insurance,
+            COUNT(CASE WHEN insurance_status = 'VENCIDO' THEN 1 END) * 100.0 / COUNT(*) as expired_insurance_pct,
+            COUNT(CASE WHEN insurance_status = 'ATIVO' THEN 1 END) * 100.0 / COUNT(*) as active_insurance_pct
+          FROM ${DatabaseName}.gold_car_current_state
+        ),
+        alerts_quality AS (
+          SELECT 
+            'PERFORMANCE_ALERTS' as layer,
+            COUNT(*) as total_records,
+            COUNT(DISTINCT carchassis) as unique_vehicles,
+            COUNT(CASE WHEN alert_type IS NULL THEN 1 END) as missing_alert_type,
+            COUNT(CASE WHEN alert_value IS NULL THEN 1 END) as missing_alert_value,
+            0 as missing_insurance,
+            COUNT(CASE WHEN alert_type = 'OVERHEAT_ENGINE' THEN 1 END) * 100.0 / COUNT(*) as engine_alerts_pct,
+            COUNT(CASE WHEN alert_type = 'SPEED_VIOLATION' THEN 1 END) * 100.0 / COUNT(*) as speed_alerts_pct
+          FROM ${DatabaseName}.performance_alerts_log_slim
+          WHERE event_year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
+            AND event_month = LPAD(CAST(MONTH(CURRENT_DATE) AS VARCHAR), 2, '0')
+        )
+        
+        SELECT 
+          layer,
+          total_records,
+          unique_vehicles,
+          CASE 
+            WHEN layer = 'SILVER' THEN missing_timestamps
+            WHEN layer = 'GOLD_CURRENT_STATE' THEN missing_insurance_status
+            WHEN layer = 'PERFORMANCE_ALERTS' THEN missing_alert_type
+          END as missing_key_field,
+          missing_insurance,
+          ROUND(
+            CASE 
+              WHEN layer = 'SILVER' THEN valid_engine_temp_pct
+              WHEN layer = 'GOLD_CURRENT_STATE' THEN expired_insurance_pct
+              WHEN layer = 'PERFORMANCE_ALERTS' THEN engine_alerts_pct
+            END, 
+            2
+          ) as quality_metric_1,
+          ROUND(
+            CASE 
+              WHEN layer = 'SILVER' THEN valid_fuel_pct
+              WHEN layer = 'GOLD_CURRENT_STATE' THEN active_insurance_pct
+              WHEN layer = 'PERFORMANCE_ALERTS' THEN speed_alerts_pct
+            END, 
+            2
+          ) as quality_metric_2,
+          CURRENT_TIMESTAMP as quality_check_time
+        FROM (
+          SELECT * FROM silver_quality
+          UNION ALL SELECT * FROM gold_current_state_quality
+          UNION ALL SELECT * FROM alerts_quality
+        )
+        ORDER BY layer;
+      WorkGroup: !Ref DataLakehouseWorkgroup
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Athena Workgroup Information
+  # ========================================================================
+  WorkgroupName:
+    Description: Nome do Athena Workgroup
+    Value: !Ref DataLakehouseWorkgroup
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-workgroup-name'
+      
+  WorkgroupArn:
+    Description: ARN do Athena Workgroup
+    Value: !Sub 'arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${DataLakehouseWorkgroup}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-workgroup-arn'
+      
+  # ========================================================================
+  # Data Catalog Information
+  # ========================================================================
+  DataCatalogName:
+    Description: Nome do Athena Data Catalog
+    Value: !Ref DataLakehouseDataCatalog
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-catalog-name'
+      
+  # ========================================================================
+  # Query Configuration
+  # ========================================================================
+  QueryResultLocation:
+    Description: Localização dos resultados das queries
+    Value: !Sub 's3://${AthenaResultsBucketName}/query-results/'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-results-location'
+      
+  BytesScannedLimit:
+    Description: Limite de bytes escaneados por query
+    Value: !FindInMap [EnvironmentConfig, !Ref Environment, BytesScannedCutoffPerQuery]
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-bytes-limit'
+      
+  # ========================================================================
+  # Named Queries Information
+  # ========================================================================
+  InsuranceKPIsQueryName:
+    Description: Nome da query de KPIs de Seguro
+    Value: !Ref InsuranceKPIsQuery
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-insurance-query-name'
+      
+  CurrentStateQueryName:
+    Description: Nome da query de Current State
+    Value: !Ref CurrentStateOverviewQuery
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-current-state-query-name'
+      
+  # ========================================================================
+  # Athena Analytics Summary
+  # ========================================================================
+  AthenaSummary:
+    Description: Resumo da configuração Athena
+    Value: !Sub |
+      Athena Analytics Configuration - ${Environment}
+      =============================================
+      
+      Workgroup: ${DataLakehouseWorkgroup}
+      Results Location: s3://${AthenaResultsBucketName}/query-results/
+      Engine Version: ${EngineVersion}
+      Bytes Limit: ${BytesScannedCutoffPerQuery} bytes
+      
+      Data Catalog Integration:
+      -------------------------
+      - Catalog: ${DataLakehouseDataCatalog}
+      - Database: ${DatabaseName}
+      - Type: GLUE (integrated)
+      
+      Named Queries (5):
+      ------------------
+      1. ${InsuranceKPIsQuery}
+         Purpose: Insurance status analysis and expiration tracking
+         
+      2. ${CurrentStateOverviewQuery}
+         Purpose: Complete vehicle status with Insurance KPIs
+         
+      3. ${PerformanceAlertsQuery}
+         Purpose: Performance alerts trends and problem vehicles
+         
+      4. ${FuelEfficiencyQuery}
+         Purpose: Fuel consumption patterns and efficiency ranking
+         
+      5. ${DataQualityQuery}
+         Purpose: Data quality monitoring across all layers
+      
+      Available Tables:
+      -----------------
+      📊 bronze_car_data (raw nested JSON)
+      📊 silver_car_telemetry (flat structure)
+      📊 gold_car_current_state (current state + Insurance KPIs)
+      📊 performance_alerts_log_slim (optimized alerts)
+      📊 fuel_efficiency_monthly (monthly analytics)
+      
+      Insurance KPIs Available:
+      -------------------------
+      ✅ insurance_status: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO
+      ✅ insurance_days_expired: Days since expiration
+      ✅ Insurance provider and validity tracking
+      ✅ Critical vehicles identification (>30 days expired)
+      
+      Query Examples:
+      ---------------
+      -- Get all expired insurance vehicles
+      SELECT carchassis, manufacturer, model, insurance_days_expired
+      FROM ${DatabaseName}.gold_car_current_state
+      WHERE insurance_status = 'VENCIDO'
+      ORDER BY insurance_days_expired DESC;
+      
+      -- Insurance status distribution
+      SELECT insurance_status, COUNT(*) as count
+      FROM ${DatabaseName}.gold_car_current_state
+      GROUP BY insurance_status;
+      
+      -- Monthly fuel efficiency trends
+      SELECT manufacturer, AVG(km_per_liter) as avg_efficiency
+      FROM ${DatabaseName}.fuel_efficiency_monthly
+      WHERE event_year = '2024'
+      GROUP BY manufacturer
+      ORDER BY avg_efficiency DESC;
+      
+      *** ANALYTICS READY FOR INSURANCE KPIs ***

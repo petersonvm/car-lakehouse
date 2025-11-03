@@ -1,0 +1,879 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - IAM Stack (Roles e Policies)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Bucket ARNs (vindos do StorageStack)
+  LandingBucketArn:
+    Type: String
+    Description: ARN do bucket Landing
+    
+  BronzeBucketArn:
+    Type: String
+    Description: ARN do bucket Bronze
+    
+  SilverBucketArn:
+    Type: String
+    Description: ARN do bucket Silver
+    
+  GoldBucketArn:
+    Type: String
+    Description: ARN do bucket Gold
+    
+  GlueScriptsBucketArn:
+    Type: String
+    Description: ARN do bucket Glue Scripts
+    
+  AthenaResultsBucketArn:
+    Type: String
+    Description: ARN do bucket Athena Results
+    
+  LambdaLayersBucketArn:
+    Type: String
+    Description: ARN do bucket Lambda Layers
+    
+  GlueTempBucketArn:
+    Type: String
+    Description: ARN do bucket Glue Temp
+
+# ============================================================================
+# RESOURCES - IAM Roles e Policies
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. GLUE JOB ROLE (Silver Consolidation)
+  # ========================================================================
+  GlueJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-glue-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Glue-Jobs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Silver-ETL-Execution
+          
+  # Policy: S3 Access para Silver Job
+  GlueJobS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-glue-job-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref BronzeBucketArn
+              - !Sub '${BronzeBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GlueScriptsBucketArn
+              - !Sub '${GlueScriptsBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GlueTempBucketArn
+              - !Sub '${GlueTempBucketArn}/*'
+      Roles:
+        - !Ref GlueJobRole
+        
+  # Policy: Glue Catalog Access
+  GlueJobCatalogPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-glue-job-catalog-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - glue:GetDatabase
+              - glue:GetTable
+              - glue:GetTables
+              - glue:GetPartition
+              - glue:GetPartitions
+              - glue:CreateTable
+              - glue:UpdateTable
+              - glue:CreatePartition
+              - glue:BatchCreatePartition
+              - glue:UpdatePartition
+            Resource: '*'
+      Roles:
+        - !Ref GlueJobRole
+        
+  # Policy: CloudWatch Logs
+  GlueJobLogsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-glue-job-logs-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/*'
+      Roles:
+        - !Ref GlueJobRole
+
+  # ========================================================================
+  # 2. GLUE CRAWLER ROLE (Bronze/Silver)
+  # ========================================================================
+  GlueCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-glue-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Glue-Crawlers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Schema-Discovery
+          
+  # Policy: S3 Access para Crawlers
+  GlueCrawlerS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-glue-crawler-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref BronzeBucketArn
+              - !Sub '${BronzeBucketArn}/*'
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+      Roles:
+        - !Ref GlueCrawlerRole
+        
+  # Policy: Glue Catalog Write
+  GlueCrawlerCatalogPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-glue-crawler-catalog-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - glue:GetDatabase
+              - glue:CreateTable
+              - glue:UpdateTable
+              - glue:DeleteTable
+              - glue:GetTable
+              - glue:GetTables
+              - glue:CreatePartition
+              - glue:BatchCreatePartition
+              - glue:UpdatePartition
+              - glue:DeletePartition
+              - glue:GetPartition
+              - glue:GetPartitions
+            Resource: '*'
+      Roles:
+        - !Ref GlueCrawlerRole
+
+  # ========================================================================
+  # 3. GOLD JOB ROLE (Current State)
+  # ========================================================================
+  GoldJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Jobs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Current-State-KPIs
+          
+  # Policy: S3 Access para Gold Job
+  GoldJobS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-job-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GlueScriptsBucketArn
+              - !Sub '${GlueScriptsBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GlueTempBucketArn
+              - !Sub '${GlueTempBucketArn}/*'
+      Roles:
+        - !Ref GoldJobRole
+        
+  # Policy: Catalog Access para Gold Job (inclui default database)
+  GoldJobCatalogPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-job-catalog-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - glue:GetDatabase
+              - glue:GetTable
+              - glue:GetTables
+              - glue:GetPartition
+              - glue:GetPartitions
+              - glue:CreateTable
+              - glue:UpdateTable
+              - glue:CreatePartition
+              - glue:BatchCreatePartition
+              - glue:UpdatePartition
+            Resource: '*'
+      Roles:
+        - !Ref GoldJobRole
+
+  # ========================================================================
+  # 4. GOLD CRAWLER ROLE (Current State)
+  # ========================================================================
+  GoldCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Crawlers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Gold-Schema-Discovery
+          
+  # Policy: S3 Access para Gold Crawler
+  GoldCrawlerS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-crawler-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/*'
+      Roles:
+        - !Ref GoldCrawlerRole
+
+  # ========================================================================
+  # 5. GOLD ALERTS JOB ROLE (Performance Alerts - OLD)
+  # ========================================================================
+  GoldAlertsJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-alerts-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Alerts-Jobs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Performance-Alerts-OLD
+          
+  # Policy: S3 para Alerts Job
+  GoldAlertsJobS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-alerts-job-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/performance_alerts_log/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GlueScriptsBucketArn
+              - !Sub '${GlueScriptsBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GlueTempBucketArn
+              - !Sub '${GlueTempBucketArn}/*'
+      Roles:
+        - !Ref GoldAlertsJobRole
+
+  # ========================================================================
+  # 6. GOLD ALERTS CRAWLER ROLE (Performance Alerts - OLD)
+  # ========================================================================
+  GoldAlertsCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-alerts-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Alerts-Crawlers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Alerts-Schema-Discovery-OLD
+
+  # ========================================================================
+  # 7. GOLD ALERTS SLIM JOB ROLE (Performance Alerts - OPTIMIZED)
+  # ========================================================================
+  GoldAlertsSlimJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-alerts-slim-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Alerts-Slim-Jobs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Performance-Alerts-OPTIMIZED
+          
+  # Policy: S3 para Alerts Slim Job (apenas 7 colunas)
+  GoldAlertsSlimJobS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-alerts-slim-job-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/performance_alerts_log_slim/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GlueScriptsBucketArn
+              - !Sub '${GlueScriptsBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GlueTempBucketArn
+              - !Sub '${GlueTempBucketArn}/*'
+      Roles:
+        - !Ref GoldAlertsSlimJobRole
+
+  # ========================================================================
+  # 8. GOLD ALERTS SLIM CRAWLER ROLE (Performance Alerts - OPTIMIZED)
+  # ========================================================================
+  GoldAlertsSlimCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-alerts-slim-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Alerts-Slim-Crawlers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Alerts-Schema-Discovery-OPTIMIZED
+
+  # ========================================================================
+  # 9. GOLD FUEL JOB ROLE (Fuel Efficiency)
+  # ========================================================================
+  GoldFuelJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-fuel-job-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Fuel-Jobs
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Fuel-Efficiency-KPIs
+          
+  # Policy: S3 para Fuel Job (read Silver + Gold)
+  GoldFuelJobS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-gold-fuel-job-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/fuel_efficiency_monthly/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref GlueScriptsBucketArn
+              - !Sub '${GlueScriptsBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref GlueTempBucketArn
+              - !Sub '${GlueTempBucketArn}/*'
+      Roles:
+        - !Ref GoldFuelJobRole
+
+  # ========================================================================
+  # 10. GOLD FUEL CRAWLER ROLE (Fuel Efficiency)
+  # ========================================================================
+  GoldFuelCrawlerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-gold-fuel-crawler-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key: Component
+          Value: Gold-Fuel-Crawlers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Fuel-Schema-Discovery
+
+  # ========================================================================
+  # 11. LAMBDA EXECUTION ROLE
+  # ========================================================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-lambda-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: Component
+          Value: Lambda-Functions
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: ETL-Ingestion-Cleansing
+          
+  # Policy: S3 Access para Lambda
+  LambdaS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-lambda-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref LandingBucketArn
+              - !Sub '${LandingBucketArn}/*'
+              - !Ref BronzeBucketArn
+              - !Sub '${BronzeBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref BronzeBucketArn
+              - !Sub '${BronzeBucketArn}/*'
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Ref LambdaLayersBucketArn
+              - !Sub '${LambdaLayersBucketArn}/*'
+      Roles:
+        - !Ref LambdaExecutionRole
+
+  # ========================================================================
+  # 12. ATHENA EXECUTION ROLE
+  # ========================================================================
+  AthenaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-athena-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: athena.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Component
+          Value: Athena-Queries
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Data-Analytics
+          
+  # Policy: S3 Access para Athena
+  AthenaS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-athena-s3-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Ref BronzeBucketArn
+              - !Sub '${BronzeBucketArn}/*'
+              - !Ref SilverBucketArn
+              - !Sub '${SilverBucketArn}/*'
+              - !Ref GoldBucketArn
+              - !Sub '${GoldBucketArn}/*'
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:ListBucket
+            Resource:
+              - !Ref AthenaResultsBucketArn
+              - !Sub '${AthenaResultsBucketArn}/*'
+      Roles:
+        - !Ref AthenaExecutionRole
+        
+  # Policy: Glue Catalog para Athena
+  AthenaGluePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-athena-glue-access-${Environment}'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - glue:GetDatabase
+              - glue:GetDatabases
+              - glue:GetTable
+              - glue:GetTables
+              - glue:GetPartition
+              - glue:GetPartitions
+              - glue:BatchGetPartition
+            Resource: '*'
+      Roles:
+        - !Ref AthenaExecutionRole
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Job Roles ARNs
+  # ========================================================================
+  GlueJobRoleArn:
+    Description: ARN da Role para Glue Jobs (Silver)
+    Value: !GetAtt GlueJobRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-job-role-arn'
+      
+  GoldJobRoleArn:
+    Description: ARN da Role para Gold Jobs (Current State)
+    Value: !GetAtt GoldJobRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-job-role-arn'
+      
+  GoldAlertsJobRoleArn:
+    Description: ARN da Role para Gold Alerts Jobs (OLD)
+    Value: !GetAtt GoldAlertsJobRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-job-role-arn'
+      
+  GoldAlertsSlimJobRoleArn:
+    Description: ARN da Role para Gold Alerts Slim Jobs (OPTIMIZED)
+    Value: !GetAtt GoldAlertsSlimJobRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-slim-job-role-arn'
+      
+  GoldFuelJobRoleArn:
+    Description: ARN da Role para Gold Fuel Jobs
+    Value: !GetAtt GoldFuelJobRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-fuel-job-role-arn'
+      
+  # ========================================================================
+  # Crawler Roles ARNs
+  # ========================================================================
+  GlueCrawlerRoleArn:
+    Description: ARN da Role para Glue Crawlers (Bronze/Silver)
+    Value: !GetAtt GlueCrawlerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-crawler-role-arn'
+      
+  GoldCrawlerRoleArn:
+    Description: ARN da Role para Gold Crawlers (Current State)
+    Value: !GetAtt GoldCrawlerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-crawler-role-arn'
+      
+  GoldAlertsCrawlerRoleArn:
+    Description: ARN da Role para Gold Alerts Crawlers (OLD)
+    Value: !GetAtt GoldAlertsCrawlerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-crawler-role-arn'
+      
+  GoldAlertsSlimCrawlerRoleArn:
+    Description: ARN da Role para Gold Alerts Slim Crawlers (OPTIMIZED)
+    Value: !GetAtt GoldAlertsSlimCrawlerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-slim-crawler-role-arn'
+      
+  GoldFuelCrawlerRoleArn:
+    Description: ARN da Role para Gold Fuel Crawlers
+    Value: !GetAtt GoldFuelCrawlerRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-fuel-crawler-role-arn'
+      
+  # ========================================================================
+  # Lambda e Athena Roles ARNs
+  # ========================================================================
+  LambdaExecutionRoleArn:
+    Description: ARN da Role para Lambda Functions
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-lambda-execution-role-arn'
+      
+  AthenaExecutionRoleArn:
+    Description: ARN da Role para Athena Queries
+    Value: !GetAtt AthenaExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-execution-role-arn'
+      
+  # ========================================================================
+  # IAM Summary
+  # ========================================================================
+  IAMSummary:
+    Description: Resumo das IAM Roles criadas
+    Value: !Sub |
+      IAM Roles - ${Environment}
+      ==========================
+      Glue Jobs:
+      - Silver: ${GlueJobRole}
+      - Gold Current State: ${GoldJobRole}
+      - Gold Alerts (OLD): ${GoldAlertsJobRole}
+      - Gold Alerts Slim: ${GoldAlertsSlimJobRole}
+      - Gold Fuel: ${GoldFuelJobRole}
+      
+      Glue Crawlers:
+      - Bronze/Silver: ${GlueCrawlerRole}
+      - Gold Current State: ${GoldCrawlerRole}
+      - Gold Alerts (OLD): ${GoldAlertsCrawlerRole}
+      - Gold Alerts Slim: ${GoldAlertsSlimCrawlerRole}
+      - Gold Fuel: ${GoldFuelCrawlerRole}
+      
+      Other Services:
+      - Lambda: ${LambdaExecutionRole}
+      - Athena: ${AthenaExecutionRole}

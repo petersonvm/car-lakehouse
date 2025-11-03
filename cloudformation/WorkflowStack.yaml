@@ -1,0 +1,515 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Workflow Stack (Glue Workflow com Triggers Condicionais)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Job Names (vindos do ETLStack)
+  SilverJobName:
+    Type: String
+    Description: Nome do Silver Consolidation Job
+    
+  GoldCurrentStateJobName:
+    Type: String
+    Description: Nome do Gold Current State Job
+    
+  GoldAlertsJobName:
+    Type: String
+    Description: Nome do Gold Performance Alerts Job
+    
+  GoldAlertsSlimJobName:
+    Type: String
+    Description: Nome do Gold Performance Alerts Slim Job
+    
+  GoldFuelJobName:
+    Type: String
+    Description: Nome do Gold Fuel Efficiency Job
+    
+  # Crawler Names (vindos do ETLStack)
+  SilverCrawlerName:
+    Type: String
+    Description: Nome do Silver Crawler
+    
+  GoldCurrentStateCrawlerName:
+    Type: String
+    Description: Nome do Gold Current State Crawler
+    
+  GoldAlertsSlimCrawlerName:
+    Type: String
+    Description: Nome do Gold Alerts Slim Crawler
+    
+  GoldFuelCrawlerName:
+    Type: String
+    Description: Nome do Gold Fuel Crawler
+
+# ============================================================================
+# MAPPINGS - Environment Configuration
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      WorkflowSchedule: 'cron(0 */2 * * ? *)'    # A cada 2 horas em dev
+      WorkflowTimeout: 240                        # 4 horas timeout
+      MaxConcurrentRuns: 3
+    staging:
+      WorkflowSchedule: 'cron(0 * * * ? *)'      # Hourly em staging
+      WorkflowTimeout: 360                        # 6 horas timeout
+      MaxConcurrentRuns: 5
+    prod:
+      WorkflowSchedule: 'cron(0 * * * ? *)'      # Hourly em produção
+      WorkflowTimeout: 480                        # 8 horas timeout
+      MaxConcurrentRuns: 10
+
+# ============================================================================
+# RESOURCES - Glue Workflow and Triggers
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. GLUE WORKFLOW (Main Orchestrator)
+  # ========================================================================
+  DataLakehouseWorkflow:
+    Type: AWS::Glue::Workflow
+    Properties:
+      Name: !Sub '${ProjectName}-etl-workflow-${Environment}'
+      Description: !Sub |
+        Data Lakehouse ETL Workflow - ${Environment}
+        =============================================
+        
+        Orchestrates the complete data pipeline:
+        1. SCHEDULED Start (hourly)
+        2. Silver Consolidation Job (Bronze → Silver)
+        3. Silver Crawler (schema discovery)
+        4. PARALLEL Gold Jobs:
+           - Current State Job (with Insurance KPIs)
+           - Performance Alerts Job
+           - Fuel Efficiency Job
+        5. CONDITIONAL Crawlers (based on job success)
+        6. Alerts Slim Job (optimization)
+        
+        SPECIAL FEATURES:
+        - Insurance KPIs enabled in Current State
+        - Fan-out pattern for parallel Gold processing
+        - Conditional triggers with success predicates
+        - Storage optimization in Alerts Slim
+      DefaultRunProperties:
+        'glue.workflow.timeout': !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowTimeout]
+        'glue.workflow.maxConcurrentRuns': !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+        'glue.workflow.environment': !Ref Environment
+        'glue.workflow.project': !Ref ProjectName
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        WorkflowType: ETL
+        Architecture: Medallion
+
+  # ========================================================================
+  # 2. SCHEDULED TRIGGER (Start of Workflow)
+  # ========================================================================
+  ScheduledStartTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-scheduled-start-trigger-${Environment}'
+      Description: 'SCHEDULED Trigger - Starts the workflow automatically (hourly)'
+      Type: SCHEDULED
+      Schedule: !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowSchedule]
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Actions:
+        - JobName: !Ref SilverJobName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'scheduled-start'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Scheduled
+        StartPoint: true
+
+  # ========================================================================
+  # 3. CONDITIONAL TRIGGER (Silver Job → Silver Crawler)
+  # ========================================================================
+  SilverJobToSilverCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-silver-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Silver Job SUCCESS → Silver Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref SilverJobName
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref SilverCrawlerName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'silver-job-success'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: SilverJobToCrawler
+
+  # ========================================================================
+  # 4. CONDITIONAL TRIGGER (Silver Crawler → 3 PARALLEL Gold Jobs)
+  # ========================================================================
+  SilverCrawlerToGoldJobsTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-silver-crawler-to-gold-jobs-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Silver Crawler SUCCESS → 3 PARALLEL Gold Jobs (Fan-out)'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            CrawlerName: !Ref SilverCrawlerName
+            CrawlState: SUCCEEDED
+        Logical: AND
+      Actions:
+        # Action 1: Gold Current State Job (com Insurance KPIs)
+        - JobName: !Ref GoldCurrentStateJobName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'silver-crawler-success'
+            '--parallel-job': '1-of-3'
+            '--job-type': 'current-state'
+            '--enable-insurance-kpis': 'true'
+            '--environment': !Ref Environment
+        # Action 2: Gold Performance Alerts Job
+        - JobName: !Ref GoldAlertsJobName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'silver-crawler-success'
+            '--parallel-job': '2-of-3'
+            '--job-type': 'performance-alerts'
+            '--environment': !Ref Environment
+        # Action 3: Gold Fuel Efficiency Job
+        - JobName: !Ref GoldFuelJobName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'silver-crawler-success'
+            '--parallel-job': '3-of-3'
+            '--job-type': 'fuel-efficiency'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: SilverToGoldFanOut
+        Pattern: ParallelExecution
+
+  # ========================================================================
+  # 5. CONDITIONAL TRIGGER (Gold Current State Job → Current State Crawler)
+  # ========================================================================
+  GoldCurrentStateJobToCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-gold-current-state-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Gold Current State Job SUCCESS → Current State Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref GoldCurrentStateJobName
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref GoldCurrentStateCrawlerName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'gold-current-state-job-success'
+            '--table-type': 'current-state-with-insurance-kpis'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: GoldCurrentStateJobToCrawler
+        KPIs: Insurance
+
+  # ========================================================================
+  # 6. CONDITIONAL TRIGGER (Gold Alerts Job → Gold Alerts Slim Job)
+  # ========================================================================
+  GoldAlertsJobToSlimJobTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-gold-alerts-job-to-slim-job-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Gold Alerts Job SUCCESS → Gold Alerts Slim Job (Storage Optimization)'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref GoldAlertsJobName
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - JobName: !Ref GoldAlertsSlimJobName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'gold-alerts-job-success'
+            '--optimization-type': 'storage-80percent-reduction'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: GoldAlertsToSlim
+        Optimization: Storage
+
+  # ========================================================================
+  # 7. CONDITIONAL TRIGGER (Gold Alerts Slim Job → Alerts Slim Crawler)
+  # ========================================================================
+  GoldAlertsSlimJobToCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-gold-alerts-slim-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Gold Alerts Slim Job SUCCESS → Alerts Slim Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref GoldAlertsSlimJobName
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref GoldAlertsSlimCrawlerName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'gold-alerts-slim-job-success'
+            '--table-type': 'optimized-slim-7-columns'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: GoldAlertsSlimJobToCrawler
+        Optimization: Storage
+
+  # ========================================================================
+  # 8. CONDITIONAL TRIGGER (Gold Fuel Job → Fuel Crawler)
+  # ========================================================================
+  GoldFuelJobToCrawlerTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub '${ProjectName}-gold-fuel-job-to-crawler-trigger-${Environment}'
+      Description: 'CONDITIONAL Trigger - Gold Fuel Efficiency Job SUCCESS → Fuel Crawler'
+      Type: CONDITIONAL
+      StartOnCreation: true
+      WorkflowName: !Ref DataLakehouseWorkflow
+      Predicate:
+        Conditions:
+          - LogicalOperator: EQUALS
+            JobName: !Ref GoldFuelJobName
+            State: SUCCEEDED
+        Logical: AND
+      Actions:
+        - CrawlerName: !Ref GoldFuelCrawlerName
+          Arguments:
+            '--workflow-name': !Ref DataLakehouseWorkflow
+            '--workflow-run-id': '$AWS_GLUE_WORKFLOW_RUN_ID'
+            '--triggered-by': 'gold-fuel-job-success'
+            '--table-type': 'monthly-aggregated-kpis'
+            '--environment': !Ref Environment
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        TriggerType: Conditional
+        Pipeline: GoldFuelJobToCrawler
+        Analytics: Monthly
+
+  # ========================================================================
+  # 9. CLOUDWATCH LOG GROUP (Workflow Monitoring)
+  # ========================================================================
+  WorkflowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/workflows/${ProjectName}-etl-workflow-${Environment}'
+      RetentionInDays: 30
+      Tags:
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: LogType
+          Value: Workflow
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Workflow Information
+  # ========================================================================
+  WorkflowName:
+    Description: Nome do Glue Workflow
+    Value: !Ref DataLakehouseWorkflow
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-name'
+      
+  WorkflowArn:
+    Description: ARN do Glue Workflow
+    Value: !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:workflow/${DataLakehouseWorkflow}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-arn'
+      
+  # ========================================================================
+  # Trigger Names
+  # ========================================================================
+  ScheduledTriggerName:
+    Description: Nome do Scheduled Start Trigger
+    Value: !Ref ScheduledStartTrigger
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-scheduled-trigger-name'
+      
+  SilverJobTriggerName:
+    Description: Nome do Silver Job to Crawler Trigger
+    Value: !Ref SilverJobToSilverCrawlerTrigger
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-job-trigger-name'
+      
+  FanOutTriggerName:
+    Description: Nome do Fan-out Trigger (Silver → 3 Gold Jobs)
+    Value: !Ref SilverCrawlerToGoldJobsTrigger
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-fanout-trigger-name'
+      
+  # ========================================================================
+  # Workflow Schedule and Configuration
+  # ========================================================================
+  WorkflowSchedule:
+    Description: Schedule do Workflow
+    Value: !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowSchedule]
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-schedule'
+      
+  WorkflowTimeout:
+    Description: Timeout do Workflow (minutos)
+    Value: !FindInMap [EnvironmentConfig, !Ref Environment, WorkflowTimeout]
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-timeout'
+      
+  # ========================================================================
+  # Workflow Execution Flow Summary
+  # ========================================================================
+  WorkflowExecutionFlow:
+    Description: Fluxo de execução do workflow
+    Value: !Sub |
+      Workflow Execution Flow - ${Environment}
+      =======================================
+      
+      TRIGGER CHAIN:
+      ==============
+      
+      1. ⏰ SCHEDULED START (${WorkflowSchedule})
+         └─► ${SilverJobName}
+      
+      2. 🔄 CONDITIONAL (Silver Job SUCCESS)
+         └─► ${SilverCrawlerName}
+      
+      3. 🔄 CONDITIONAL (Silver Crawler SUCCESS) *** FAN-OUT ***
+         ├─► ${GoldCurrentStateJobName} (Insurance KPIs)
+         ├─► ${GoldAlertsJobName} (Performance Alerts)
+         └─► ${GoldFuelJobName} (Fuel Efficiency)
+      
+      4. 🔄 CONDITIONAL (Current State Job SUCCESS)
+         └─► ${GoldCurrentStateCrawlerName}
+      
+      5. 🔄 CONDITIONAL (Alerts Job SUCCESS)
+         └─► ${GoldAlertsSlimJobName} (80% storage reduction)
+      
+      6. 🔄 CONDITIONAL (Alerts Slim Job SUCCESS)
+         └─► ${GoldAlertsSlimCrawlerName}
+      
+      7. 🔄 CONDITIONAL (Fuel Job SUCCESS)
+         └─► ${GoldFuelCrawlerName}
+      
+      EXECUTION PATTERN:
+      ==================
+      - SEQUENTIAL: Start → Silver → Silver Crawler
+      - PARALLEL: 3 Gold Jobs execute simultaneously
+      - CONDITIONAL: Each Job → respective Crawler
+      - OPTIMIZATION: Alerts → Slim (storage reduction)
+      
+      SPECIAL FEATURES:
+      =================
+      ✅ Insurance KPIs enabled in Current State
+      ✅ Fan-out pattern for parallel Gold processing
+      ✅ Conditional success predicates
+      ✅ Storage optimization (80% reduction)
+      ✅ Hourly automated execution
+      ✅ Workflow monitoring via CloudWatch
+      
+      INSURANCE KPIs:
+      ===============
+      - insurance_status: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO
+      - insurance_days_expired: Days since expiration
+      
+      SUCCESS CRITERIA:
+      =================
+      - All conditional predicates check for SUCCESS state
+      - Parallel Gold jobs are independent (one failure doesn't block others)
+      - Crawlers update schema after successful job completion
+      - Workflow timeout: ${WorkflowTimeout} minutes
+      - Max concurrent runs: ${MaxConcurrentRuns}
+      
+  # ========================================================================
+  # Workflow Summary
+  # ========================================================================
+  WorkflowSummary:
+    Description: Resumo do Workflow
+    Value: !Sub |
+      Glue Workflow Configuration - ${Environment}
+      ==========================================
+      
+      Workflow: ${DataLakehouseWorkflow}
+      Schedule: ${WorkflowSchedule}
+      Timeout: ${WorkflowTimeout} minutes
+      Max Concurrent: ${MaxConcurrentRuns}
+      
+      Triggers (8):
+      -------------
+      1. ${ScheduledStartTrigger} (SCHEDULED)
+      2. ${SilverJobToSilverCrawlerTrigger} (CONDITIONAL)
+      3. ${SilverCrawlerToGoldJobsTrigger} (CONDITIONAL - FAN-OUT)
+      4. ${GoldCurrentStateJobToCrawlerTrigger} (CONDITIONAL)
+      5. ${GoldAlertsJobToSlimJobTrigger} (CONDITIONAL)
+      6. ${GoldAlertsSlimJobToCrawlerTrigger} (CONDITIONAL)
+      7. ${GoldFuelJobToCrawlerTrigger} (CONDITIONAL)
+      
+      Pipeline Flow:
+      --------------
+      Start → Silver Job → Silver Crawler → [3 Gold Jobs PARALLEL] → Respective Crawlers → Slim Optimization
+      
+      *** INSURANCE KPIs ENABLED ***

@@ -1,0 +1,462 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Storage Stack (S3 Buckets - Medallion Architecture)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  RetentionDays:
+    Type: Number
+    Description: Dias de retenção para lifecycle policies
+    Default: 30
+
+# ============================================================================
+# RESOURCES - S3 Buckets (Medallion Architecture)
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # LANDING BUCKET - Ponto de entrada (JSON/CSV)
+  # ========================================================================
+  LandingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-landing-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref RetentionDays
+          - Id: TransitionToIA
+            Status: Enabled
+            Transition:
+              StorageClass: STANDARD_IA
+              TransitionInDays: 30
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transition:
+              StorageClass: GLACIER
+              TransitionInDays: 90
+      Tags:
+        - Key: Layer
+          Value: Landing
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Raw-Data-Ingestion
+          
+  # ========================================================================
+  # BRONZE BUCKET - Dados brutos estruturados (Parquet aninhado)
+  # ========================================================================
+  BronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-bronze-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref RetentionDays
+          - Id: TransitionToIA
+            Status: Enabled
+            Transition:
+              StorageClass: STANDARD_IA
+              TransitionInDays: 30
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transition:
+              StorageClass: GLACIER
+              TransitionInDays: 180
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !Ref CleansingLambdaTrigger
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: .parquet
+      Tags:
+        - Key: Layer
+          Value: Bronze
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Structured-Raw-Data
+          
+  # ========================================================================
+  # SILVER BUCKET - Dados limpos e enriquecidos (Parquet plano)
+  # ========================================================================
+  SilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-silver-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref RetentionDays
+          - Id: TransitionToIA
+            Status: Enabled
+            Transition:
+              StorageClass: STANDARD_IA
+              TransitionInDays: 60
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transition:
+              StorageClass: GLACIER
+              TransitionInDays: 365
+      Tags:
+        - Key: Layer
+          Value: Silver
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Cleansed-Enriched-Data
+          
+  # ========================================================================
+  # GOLD BUCKET - Dados de negócio (KPIs, agregações)
+  # ========================================================================
+  GoldBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-gold-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: !Ref RetentionDays
+          - Id: TransitionToIA
+            Status: Enabled
+            Transition:
+              StorageClass: STANDARD_IA
+              TransitionInDays: 90
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transition:
+              StorageClass: GLACIER
+              TransitionInDays: 730
+      Tags:
+        - Key: Layer
+          Value: Gold
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Business-KPIs-Analytics
+          
+  # ========================================================================
+  # GLUE SCRIPTS BUCKET - Scripts PySpark
+  # ========================================================================
+  GlueScriptsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-glue-scripts-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Component
+          Value: Glue-Scripts
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: PySpark-ETL-Scripts
+          
+  # ========================================================================
+  # ATHENA RESULTS BUCKET - Resultados de queries
+  # ========================================================================
+  AthenaResultsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-athena-results-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteQueryResults
+            Status: Enabled
+            ExpirationInDays: 30
+            Prefix: query-results/
+      Tags:
+        - Key: Component
+          Value: Athena-Results
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Query-Results-Storage
+          
+  # ========================================================================
+  # LAMBDA LAYERS BUCKET - Layers para Lambda functions
+  # ========================================================================
+  LambdaLayersBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-lambda-layers-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Component
+          Value: Lambda-Layers
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Lambda-Dependencies
+          
+  # ========================================================================
+  # GLUE TEMP BUCKET - Arquivos temporários do Glue
+  # ========================================================================
+  GlueTempBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-glue-temp-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteTempFiles
+            Status: Enabled
+            ExpirationInDays: 1
+            Prefix: temp/
+          - Id: DeleteSparkHistoryLogs
+            Status: Enabled
+            ExpirationInDays: 7
+            Prefix: sparkHistoryLogs/
+      Tags:
+        - Key: Component
+          Value: Glue-Temp
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Temporary-Files
+          
+  # ========================================================================
+  # LAMBDA TRIGGER PLACEHOLDER (para NotificationConfiguration)
+  # ========================================================================
+  CleansingLambdaTrigger:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-cleansing-trigger-${Environment}'
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-lambda-execution-role-${Environment}'
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              # Placeholder - será substituído pelo LambdaStack
+              return {
+                  'statusCode': 200,
+                  'body': 'Cleansing trigger placeholder'
+              }
+      Description: Placeholder para trigger de cleansing (será substituído)
+      Tags:
+        - Key: Purpose
+          Value: Placeholder
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Bucket Names
+  # ========================================================================
+  LandingBucketName:
+    Description: Nome do bucket Landing
+    Value: !Ref LandingBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-landing-bucket-name'
+      
+  BronzeBucketName:
+    Description: Nome do bucket Bronze
+    Value: !Ref BronzeBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-bucket-name'
+      
+  SilverBucketName:
+    Description: Nome do bucket Silver
+    Value: !Ref SilverBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-bucket-name'
+      
+  GoldBucketName:
+    Description: Nome do bucket Gold
+    Value: !Ref GoldBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-bucket-name'
+      
+  GlueScriptsBucketName:
+    Description: Nome do bucket Glue Scripts
+    Value: !Ref GlueScriptsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-scripts-bucket-name'
+      
+  AthenaResultsBucketName:
+    Description: Nome do bucket Athena Results
+    Value: !Ref AthenaResultsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-results-bucket-name'
+      
+  LambdaLayersBucketName:
+    Description: Nome do bucket Lambda Layers
+    Value: !Ref LambdaLayersBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-lambda-layers-bucket-name'
+      
+  GlueTempBucketName:
+    Description: Nome do bucket Glue Temp
+    Value: !Ref GlueTempBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-temp-bucket-name'
+      
+  # ========================================================================
+  # Bucket ARNs
+  # ========================================================================
+  LandingBucketArn:
+    Description: ARN do bucket Landing
+    Value: !GetAtt LandingBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-landing-bucket-arn'
+      
+  BronzeBucketArn:
+    Description: ARN do bucket Bronze
+    Value: !GetAtt BronzeBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-bucket-arn'
+      
+  SilverBucketArn:
+    Description: ARN do bucket Silver
+    Value: !GetAtt SilverBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-bucket-arn'
+      
+  GoldBucketArn:
+    Description: ARN do bucket Gold
+    Value: !GetAtt GoldBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-bucket-arn'
+      
+  GlueScriptsBucketArn:
+    Description: ARN do bucket Glue Scripts
+    Value: !GetAtt GlueScriptsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-scripts-bucket-arn'
+      
+  AthenaResultsBucketArn:
+    Description: ARN do bucket Athena Results
+    Value: !GetAtt AthenaResultsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-results-bucket-arn'
+      
+  LambdaLayersBucketArn:
+    Description: ARN do bucket Lambda Layers
+    Value: !GetAtt LambdaLayersBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-lambda-layers-bucket-arn'
+      
+  GlueTempBucketArn:
+    Description: ARN do bucket Glue Temp
+    Value: !GetAtt GlueTempBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-glue-temp-bucket-arn'
+      
+  # ========================================================================
+  # Storage Summary
+  # ========================================================================
+  StorageSummary:
+    Description: Resumo da arquitetura de storage
+    Value: !Sub |
+      Medallion Architecture - ${Environment}
+      =======================================
+      Landing: ${LandingBucket} (raw files)
+      Bronze:  ${BronzeBucket} (structured parquet)
+      Silver:  ${SilverBucket} (cleansed & enriched)
+      Gold:    ${GoldBucket} (business KPIs)
+      
+      Support Buckets:
+      Scripts: ${GlueScriptsBucket}
+      Results: ${AthenaResultsBucket}
+      Layers:  ${LambdaLayersBucket}
+      Temp:    ${GlueTempBucket}

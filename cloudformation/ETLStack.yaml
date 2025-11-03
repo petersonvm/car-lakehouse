@@ -1,0 +1,746 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - ETL Stack (Glue Jobs e Crawlers)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Bucket Names (vindos do StorageStack)
+  BronzeBucketName:
+    Type: String
+    Description: Nome do bucket Bronze
+    
+  SilverBucketName:
+    Type: String
+    Description: Nome do bucket Silver
+    
+  GoldBucketName:
+    Type: String
+    Description: Nome do bucket Gold
+    
+  GlueScriptsBucketName:
+    Type: String
+    Description: Nome do bucket para scripts Glue
+    
+  GlueTempBucketName:
+    Type: String
+    Description: Nome do bucket temporário Glue
+    
+  # Database Name (vindo do GlueCatalogStack)
+  DatabaseName:
+    Type: String
+    Description: Nome do Glue Database
+    
+  # IAM Roles (vindos do IAMStack)
+  GlueJobRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Glue Jobs genéricos
+    
+  GlueCrawlerRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Glue Crawlers genéricos
+    
+  GoldJobRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Car Current State Job
+    
+  GoldCrawlerRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Car Current State Crawler
+    
+  GoldAlertsJobRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Performance Alerts Job
+    
+  GoldAlertsCrawlerRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Performance Alerts Crawler
+    
+  GoldAlertsSlimJobRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Performance Alerts Slim Job
+    
+  GoldAlertsSlimCrawlerRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Performance Alerts Slim Crawler
+    
+  GoldFuelJobRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Fuel Efficiency Job
+    
+  GoldFuelCrawlerRoleArn:
+    Type: String
+    Description: ARN do IAM Role para Gold Fuel Efficiency Crawler
+
+# ============================================================================
+# MAPPINGS - Environment Configuration
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      GlueVersion: '4.0'
+      WorkerType: 'G.1X'
+      NumberOfWorkers: 2
+      MaxConcurrentRuns: 3
+      JobTimeout: 60
+      MaxRetries: 1
+    staging:
+      GlueVersion: '4.0'
+      WorkerType: 'G.1X'
+      NumberOfWorkers: 3
+      MaxConcurrentRuns: 5
+      JobTimeout: 120
+      MaxRetries: 2
+    prod:
+      GlueVersion: '4.0'
+      WorkerType: 'G.2X'
+      NumberOfWorkers: 5
+      MaxConcurrentRuns: 10
+      JobTimeout: 180
+      MaxRetries: 3
+
+# ============================================================================
+# RESOURCES - ETL Jobs and Crawlers
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. CLOUDWATCH LOG GROUPS
+  # ========================================================================
+  
+  SilverJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ProjectName}-silver-consolidation-${Environment}'
+      RetentionInDays: 30
+      
+  GoldJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ProjectName}-gold-car-current-state-${Environment}'
+      RetentionInDays: 30
+      
+  GoldAlertsJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ProjectName}-gold-performance-alerts-${Environment}'
+      RetentionInDays: 30
+      
+  GoldAlertsSlimJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ProjectName}-gold-performance-alerts-slim-${Environment}'
+      RetentionInDays: 30
+      
+  GoldFuelJobLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws-glue/jobs/${ProjectName}-gold-fuel-efficiency-${Environment}'
+      RetentionInDays: 30
+
+  # ========================================================================
+  # 2. GLUE JOBS
+  # ========================================================================
+  
+  # ========================================================================
+  # 2.1 Silver Consolidation Job (Bronze → Silver)
+  # ========================================================================
+  SilverConsolidationJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-silver-consolidation-${Environment}'
+      Description: 'Silver ETL - Flattens nested JSON structures from Bronze to Silver'
+      Role: !Ref GlueJobRoleArn
+      GlueVersion: !FindInMap [EnvironmentConfig, !Ref Environment, GlueVersion]
+      WorkerType: !FindInMap [EnvironmentConfig, !Ref Environment, WorkerType]
+      NumberOfWorkers: !FindInMap [EnvironmentConfig, !Ref Environment, NumberOfWorkers]
+      MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, JobTimeout]
+      MaxRetries: !FindInMap [EnvironmentConfig, !Ref Environment, MaxRetries]
+      ExecutionProperty:
+        MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucketName}/glue_jobs/silver_consolidation_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucketName}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucketName}/temporary/'
+        '--source_database': !Ref DatabaseName
+        '--source_table': 'bronze_car_data'
+        '--target_database': !Ref DatabaseName
+        '--target_table': 'silver_car_telemetry'
+        '--target_s3_path': !Sub 's3://${SilverBucketName}/car_telemetry/'
+        '--environment': !Ref Environment
+        '--additional-python-modules': 'pytz'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Silver
+        JobType: ETL
+        
+  # ========================================================================
+  # 2.2 Gold Car Current State Job (Silver → Gold) - COM INSURANCE KPIs
+  # ========================================================================
+  GoldCarCurrentStateJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-gold-car-current-state-${Environment}'
+      Description: 'Gold ETL - Creates current state with Insurance KPIs (insurance_status, insurance_days_expired)'
+      Role: !Ref GoldJobRoleArn
+      GlueVersion: !FindInMap [EnvironmentConfig, !Ref Environment, GlueVersion]
+      WorkerType: !FindInMap [EnvironmentConfig, !Ref Environment, WorkerType]
+      NumberOfWorkers: !FindInMap [EnvironmentConfig, !Ref Environment, NumberOfWorkers]
+      MaxConcurrentRuns: 1
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, JobTimeout]
+      MaxRetries: !FindInMap [EnvironmentConfig, !Ref Environment, MaxRetries]
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucketName}/glue_jobs/gold_car_current_state_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-disable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucketName}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucketName}/temporary/'
+        '--source_database': !Ref DatabaseName
+        '--source_table': 'silver_car_telemetry'
+        '--target_database': !Ref DatabaseName
+        '--target_table': 'gold_car_current_state'
+        '--target_s3_path': !Sub 's3://${GoldBucketName}/car_current_state/'
+        '--environment': !Ref Environment
+        '--write_mode': 'overwrite'
+        '--enable_insurance_kpis': 'true'
+        '--additional-python-modules': 'pytz'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        JobType: CurrentState
+        KPIs: Insurance
+        
+  # ========================================================================
+  # 2.3 Gold Performance Alerts Job (Silver → Gold)
+  # ========================================================================
+  GoldPerformanceAlertsJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-gold-performance-alerts-${Environment}'
+      Description: 'Gold ETL - Generates performance alerts (engine overheat, oil overheat, speed violations)'
+      Role: !Ref GoldAlertsJobRoleArn
+      GlueVersion: !FindInMap [EnvironmentConfig, !Ref Environment, GlueVersion]
+      WorkerType: !FindInMap [EnvironmentConfig, !Ref Environment, WorkerType]
+      NumberOfWorkers: !FindInMap [EnvironmentConfig, !Ref Environment, NumberOfWorkers]
+      MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, JobTimeout]
+      MaxRetries: !FindInMap [EnvironmentConfig, !Ref Environment, MaxRetries]
+      ExecutionProperty:
+        MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucketName}/glue_jobs/gold_performance_alerts_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucketName}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucketName}/temporary/'
+        '--source_database': !Ref DatabaseName
+        '--source_table': 'silver_car_telemetry'
+        '--target_database': !Ref DatabaseName
+        '--target_table': 'performance_alerts_log'
+        '--target_s3_path': !Sub 's3://${GoldBucketName}/performance_alerts_log/'
+        '--environment': !Ref Environment
+        '--engine_temp_threshold': '100'
+        '--oil_temp_threshold': '120'
+        '--speed_limit_km': '120'
+        '--additional-python-modules': 'pytz'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        JobType: Alerts
+        
+  # ========================================================================
+  # 2.4 Gold Performance Alerts Slim Job (alerts → alerts_slim)
+  # ========================================================================
+  GoldPerformanceAlertsSlimJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-gold-performance-alerts-slim-${Environment}'
+      Description: 'Gold ETL - Creates slim alerts (7 columns, 80% storage reduction)'
+      Role: !Ref GoldAlertsSlimJobRoleArn
+      GlueVersion: !FindInMap [EnvironmentConfig, !Ref Environment, GlueVersion]
+      WorkerType: !FindInMap [EnvironmentConfig, !Ref Environment, WorkerType]
+      NumberOfWorkers: !FindInMap [EnvironmentConfig, !Ref Environment, NumberOfWorkers]
+      MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, JobTimeout]
+      MaxRetries: !FindInMap [EnvironmentConfig, !Ref Environment, MaxRetries]
+      ExecutionProperty:
+        MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucketName}/glue_jobs/gold_performance_alerts_slim_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucketName}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucketName}/temporary/'
+        '--source_database': !Ref DatabaseName
+        '--source_table': 'performance_alerts_log'
+        '--target_database': !Ref DatabaseName
+        '--target_table': 'performance_alerts_log_slim'
+        '--target_s3_path': !Sub 's3://${GoldBucketName}/performance_alerts_log_slim/'
+        '--environment': !Ref Environment
+        '--write_mode': 'append'
+        '--optimize_storage': 'true'
+        '--additional-python-modules': 'pytz'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        JobType: Optimization
+        
+  # ========================================================================
+  # 2.5 Gold Fuel Efficiency Job (Silver → Gold)
+  # ========================================================================
+  GoldFuelEfficiencyJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub '${ProjectName}-gold-fuel-efficiency-${Environment}'
+      Description: 'Gold ETL - Calculates monthly fuel efficiency KPIs (km/liter, consumption patterns)'
+      Role: !Ref GoldFuelJobRoleArn
+      GlueVersion: !FindInMap [EnvironmentConfig, !Ref Environment, GlueVersion]
+      WorkerType: !FindInMap [EnvironmentConfig, !Ref Environment, WorkerType]
+      NumberOfWorkers: !FindInMap [EnvironmentConfig, !Ref Environment, NumberOfWorkers]
+      MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, JobTimeout]
+      MaxRetries: !FindInMap [EnvironmentConfig, !Ref Environment, MaxRetries]
+      ExecutionProperty:
+        MaxConcurrentRuns: !FindInMap [EnvironmentConfig, !Ref Environment, MaxConcurrentRuns]
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://${GlueScriptsBucketName}/glue_jobs/gold_fuel_efficiency_job.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-spark-ui': 'true'
+        '--spark-event-logs-path': !Sub 's3://${GlueTempBucketName}/sparkHistoryLogs/'
+        '--enable-job-insights': 'true'
+        '--enable-observability-metrics': 'true'
+        '--enable-glue-datacatalog': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--TempDir': !Sub 's3://${GlueTempBucketName}/temporary/'
+        '--source_database': !Ref DatabaseName
+        '--source_table': 'silver_car_telemetry'
+        '--target_database': !Ref DatabaseName
+        '--target_table': 'fuel_efficiency_monthly'
+        '--target_s3_path': !Sub 's3://${GoldBucketName}/fuel_efficiency_monthly/'
+        '--environment': !Ref Environment
+        '--aggregation_level': 'monthly'
+        '--write_mode': 'append'
+        '--additional-python-modules': 'pytz'
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        JobType: Analytics
+
+  # ========================================================================
+  # 3. GLUE CRAWLERS
+  # ========================================================================
+  
+  # ========================================================================
+  # 3.1 Bronze Data Crawler
+  # ========================================================================
+  BronzeCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-bronze-crawler-${Environment}'
+      Description: 'Crawler for Bronze layer - Auto-discovers schema from Landing data'
+      Role: !Ref GlueCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      Schedule:
+        ScheduleExpression: 'cron(0 */6 * * ? *)'  # A cada 6 horas
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${BronzeBucketName}/bronze/car_data/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Bronze
+        
+  # ========================================================================
+  # 3.2 Silver Data Crawler
+  # ========================================================================
+  SilverCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-silver-crawler-${Environment}'
+      Description: 'Crawler for Silver layer - Updates schema after ETL processing'
+      Role: !Ref GlueCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${SilverBucketName}/car_telemetry/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Silver
+        
+  # ========================================================================
+  # 3.3 Gold Current State Crawler
+  # ========================================================================
+  GoldCurrentStateCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-gold-current-state-crawler-${Environment}'
+      Description: 'Crawler for Gold Current State table (with Insurance KPIs)'
+      Role: !Ref GoldCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GoldBucketName}/car_current_state/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        Table: CurrentState
+        KPIs: Insurance
+        
+  # ========================================================================
+  # 3.4 Gold Performance Alerts Crawler
+  # ========================================================================
+  GoldPerformanceAlertsCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-gold-performance-alerts-crawler-${Environment}'
+      Description: 'Crawler for Gold Performance Alerts table'
+      Role: !Ref GoldAlertsCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GoldBucketName}/performance_alerts_log/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        Table: PerformanceAlerts
+        
+  # ========================================================================
+  # 3.5 Gold Performance Alerts Slim Crawler
+  # ========================================================================
+  GoldPerformanceAlertsSlimCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-gold-performance-alerts-slim-crawler-${Environment}'
+      Description: 'Crawler for Gold Performance Alerts Slim table (optimized)'
+      Role: !Ref GoldAlertsSlimCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GoldBucketName}/performance_alerts_log_slim/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        Table: PerformanceAlertsSlim
+        Optimization: Storage
+        
+  # ========================================================================
+  # 3.6 Gold Fuel Efficiency Crawler
+  # ========================================================================
+  GoldFuelEfficiencyCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub '${ProjectName}-gold-fuel-efficiency-crawler-${Environment}'
+      Description: 'Crawler for Gold Fuel Efficiency table (monthly KPIs)'
+      Role: !Ref GoldFuelCrawlerRoleArn
+      DatabaseName: !Ref DatabaseName
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: DEPRECATE_IN_DATABASE
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${GoldBucketName}/fuel_efficiency_monthly/'
+            Exclusions:
+              - '**/_SUCCESS'
+              - '**/.DS_Store'
+              - '**/crc'
+      Configuration: |
+        {
+          "Version": 1.0,
+          "CrawlerOutput": {
+            "Partitions": { "AddOrUpdateBehavior": "InheritFromTable" },
+            "Tables": { "AddOrUpdateBehavior": "MergeNewColumns" }
+          },
+          "Grouping": {
+            "TableGroupingPolicy": "CombineCompatibleSchemas"
+          }
+        }
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Layer: Gold
+        Table: FuelEfficiency
+        Analytics: Monthly
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Job Names and ARNs
+  # ========================================================================
+  SilverJobName:
+    Description: Nome do Silver Consolidation Job
+    Value: !Ref SilverConsolidationJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-job-name'
+      
+  SilverJobArn:
+    Description: ARN do Silver Consolidation Job
+    Value: !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${SilverConsolidationJob}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-job-arn'
+      
+  GoldCurrentStateJobName:
+    Description: Nome do Gold Current State Job (with Insurance KPIs)
+    Value: !Ref GoldCarCurrentStateJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-current-state-job-name'
+      
+  GoldCurrentStateJobArn:
+    Description: ARN do Gold Current State Job
+    Value: !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${GoldCarCurrentStateJob}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-current-state-job-arn'
+      
+  GoldAlertsJobName:
+    Description: Nome do Gold Performance Alerts Job
+    Value: !Ref GoldPerformanceAlertsJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-job-name'
+      
+  GoldAlertsSlimJobName:
+    Description: Nome do Gold Performance Alerts Slim Job
+    Value: !Ref GoldPerformanceAlertsSlimJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-slim-job-name'
+      
+  GoldFuelJobName:
+    Description: Nome do Gold Fuel Efficiency Job
+    Value: !Ref GoldFuelEfficiencyJob
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-fuel-job-name'
+      
+  # ========================================================================
+  # Crawler Names and ARNs
+  # ========================================================================
+  BronzeCrawlerName:
+    Description: Nome do Bronze Crawler
+    Value: !Ref BronzeCrawler
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-crawler-name'
+      
+  SilverCrawlerName:
+    Description: Nome do Silver Crawler
+    Value: !Ref SilverCrawler
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-crawler-name'
+      
+  GoldCurrentStateCrawlerName:
+    Description: Nome do Gold Current State Crawler
+    Value: !Ref GoldCurrentStateCrawler
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-current-state-crawler-name'
+      
+  GoldAlertsSlimCrawlerName:
+    Description: Nome do Gold Alerts Slim Crawler
+    Value: !Ref GoldPerformanceAlertsSlimCrawler
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-slim-crawler-name'
+      
+  GoldFuelCrawlerName:
+    Description: Nome do Gold Fuel Crawler
+    Value: !Ref GoldFuelEfficiencyCrawler
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-fuel-crawler-name'
+      
+  # ========================================================================
+  # ETL Summary
+  # ========================================================================
+  ETLSummary:
+    Description: Resumo da infraestrutura ETL
+    Value: !Sub |
+      ETL Infrastructure - ${Environment}
+      ==================================
+      
+      Glue Jobs (5):
+      ---------------
+      1. ${SilverConsolidationJob} (Bronze → Silver)
+         - Script: s3://${GlueScriptsBucketName}/glue_jobs/silver_consolidation_job.py
+         - Workers: ${NumberOfWorkers} x ${WorkerType}
+         - Max Concurrent: ${MaxConcurrentRuns}
+         - Bookmark: ENABLED
+         
+      2. ${GoldCarCurrentStateJob} (Silver → Gold)
+         - Script: s3://${GlueScriptsBucketName}/glue_jobs/gold_car_current_state_job.py
+         - Insurance KPIs: ENABLED
+         - Max Concurrent: 1 (Current State)
+         - Bookmark: DISABLED (Overwrite)
+         
+      3. ${GoldPerformanceAlertsJob} (Silver → Gold)
+         - Script: s3://${GlueScriptsBucketName}/glue_jobs/gold_performance_alerts_job.py
+         - Thresholds: Engine 100°C, Oil 120°C, Speed 120km/h
+         
+      4. ${GoldPerformanceAlertsSlimJob} (Alerts → Slim)
+         - Script: s3://${GlueScriptsBucketName}/glue_jobs/gold_performance_alerts_slim_job.py
+         - Optimization: 80% storage reduction
+         
+      5. ${GoldFuelEfficiencyJob} (Silver → Gold)
+         - Script: s3://${GlueScriptsBucketName}/glue_jobs/gold_fuel_efficiency_job.py
+         - Analytics: Monthly aggregation
+      
+      Glue Crawlers (6):
+      ------------------
+      1. ${BronzeCrawler} (Auto-discover Bronze schema)
+      2. ${SilverCrawler} (Update Silver schema)
+      3. ${GoldCurrentStateCrawler} (Current State + KPIs)
+      4. ${GoldPerformanceAlertsCrawler} (Performance Alerts)
+      5. ${GoldPerformanceAlertsSlimCrawler} (Alerts Slim)
+      6. ${GoldFuelEfficiencyCrawler} (Fuel Efficiency)
+      
+      *** INSURANCE KPIs ENABLED ***
+      - insurance_status: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO
+      - insurance_days_expired: Days since expiration

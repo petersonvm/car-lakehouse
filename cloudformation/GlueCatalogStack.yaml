@@ -1,0 +1,629 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Glue Catalog Stack (Database e Tables)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Bucket Names (vindos do StorageStack)
+  BronzeBucketName:
+    Type: String
+    Description: Nome do bucket Bronze
+    
+  SilverBucketName:
+    Type: String
+    Description: Nome do bucket Silver
+    
+  GoldBucketName:
+    Type: String
+    Description: Nome do bucket Gold
+
+# ============================================================================
+# RESOURCES - Glue Catalog
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. GLUE DATABASE
+  # ========================================================================
+  DataLakeDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub '${ProjectName}-catalog-${Environment}'
+        Description: 'Data Lakehouse Catalog - Medallion Architecture (Bronze, Silver, Gold)'
+        Parameters:
+          Project: !Ref ProjectName
+          Environment: !Ref Environment
+          Architecture: Medallion
+          CreatedBy: CloudFormation
+          LastUpdated: !Ref AWS::StackCreationTime
+
+  # ========================================================================
+  # 2. BRONZE TABLE - car_data (nested structures)
+  # ========================================================================
+  BronzeCarDataTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: bronze_car_data
+        Description: 'Bronze layer - Raw car data with nested structures (preserves JSON hierarchy)'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+          sizeKey: '0'
+          objectCount: '0'
+          recordCount: '0'
+        StorageDescriptor:
+          Location: !Sub 's3://${BronzeBucketName}/bronze/car_data/'
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi do veículo'
+            - Name: model
+              Type: string
+              Comment: 'Modelo do veículo'
+            - Name: year
+              Type: bigint
+              Comment: 'Ano de fabricação'
+            - Name: modelyear
+              Type: bigint
+              Comment: 'Ano do modelo'
+            - Name: manufacturer
+              Type: string
+              Comment: 'Fabricante do veículo'
+            - Name: horsepower
+              Type: bigint
+              Comment: 'Potência em cavalos'
+            - Name: gastype
+              Type: string
+              Comment: 'Tipo de combustível'
+            - Name: currentmileage
+              Type: bigint
+              Comment: 'Quilometragem atual'
+            - Name: color
+              Type: string
+              Comment: 'Cor do veículo'
+            - Name: fuelcapacityliters
+              Type: bigint
+              Comment: 'Capacidade do tanque em litros'
+            - Name: metrics
+              Type: 'struct<engineTempCelsius:bigint,oilTempCelsius:bigint,batteryChargePerc:bigint,fuelAvailableLiters:double,coolantCelsius:bigint,trip:struct<tripMileage:bigint,tripTimeMinutes:bigint,tripFuelLiters:double,tripMaxSpeedKm:bigint,tripAverageSpeedKm:bigint,tripStartTimestamp:string>,metricTimestamp:string>'
+              Comment: 'Estrutura aninhada com métricas do veículo'
+            - Name: carinsurance
+              Type: 'struct<number:string,provider:string,validUntil:string>'
+              Comment: 'Estrutura aninhada com dados do seguro'
+            - Name: market
+              Type: 'struct<currentPrice:bigint,currency:string,location:string,dealer:string,warrantyYears:bigint,evaluator:string>'
+              Comment: 'Estrutura aninhada com dados de mercado'
+        PartitionKeys:
+          - Name: ingest_year
+            Type: string
+            Comment: 'Ano de ingestão (partição)'
+          - Name: ingest_month
+            Type: string
+            Comment: 'Mês de ingestão (partição)'
+          - Name: ingest_day
+            Type: string
+            Comment: 'Dia de ingestão (partição)'
+
+  # ========================================================================
+  # 3. SILVER TABLE - car_telemetry (flat structure)
+  # ========================================================================
+  SilverCarTelemetryTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: silver_car_telemetry
+        Description: 'Silver layer - Cleansed and enriched car telemetry data (flat structure)'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+          sizeKey: '0'
+          objectCount: '0'
+          recordCount: '0'
+        StorageDescriptor:
+          Location: !Sub 's3://${SilverBucketName}/car_telemetry/'
+          InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi do veículo'
+            - Name: model
+              Type: string
+              Comment: 'Modelo do veículo'
+            - Name: year
+              Type: bigint
+              Comment: 'Ano de fabricação'
+            - Name: modelyear
+              Type: bigint
+              Comment: 'Ano do modelo'
+            - Name: manufacturer
+              Type: string
+              Comment: 'Fabricante do veículo'
+            - Name: horsepower
+              Type: bigint
+              Comment: 'Potência em cavalos'
+            - Name: gastype
+              Type: string
+              Comment: 'Tipo de combustível'
+            - Name: currentmileage
+              Type: bigint
+              Comment: 'Quilometragem atual'
+            - Name: color
+              Type: string
+              Comment: 'Cor do veículo'
+            - Name: fuelcapacityliters
+              Type: bigint
+              Comment: 'Capacidade do tanque em litros'
+            # Métricas achatadas (flattened)
+            - Name: metrics_enginetempcelsius
+              Type: double
+              Comment: 'Temperatura do motor em Celsius'
+            - Name: metrics_oiltempcelsius
+              Type: double
+              Comment: 'Temperatura do óleo em Celsius'
+            - Name: metrics_batterychargeperc
+              Type: double
+              Comment: 'Percentual de carga da bateria'
+            - Name: metrics_fuelavailableliters
+              Type: double
+              Comment: 'Combustível disponível em litros'
+            - Name: metrics_coolantcelsius
+              Type: double
+              Comment: 'Temperatura do radiador em Celsius'
+            - Name: metrics_metrictimestamp
+              Type: timestamp
+              Comment: 'Timestamp da métrica'
+            # Trip metrics achatadas
+            - Name: metrics_trip_tripmileage
+              Type: double
+              Comment: 'Quilometragem da viagem'
+            - Name: metrics_trip_triptimeminutes
+              Type: double
+              Comment: 'Duração da viagem em minutos'
+            - Name: metrics_trip_tripfuelliters
+              Type: double
+              Comment: 'Combustível consumido na viagem'
+            - Name: metrics_trip_tripmaxspeedkm
+              Type: double
+              Comment: 'Velocidade máxima na viagem'
+            - Name: metrics_trip_tripaveragespeedkm
+              Type: double
+              Comment: 'Velocidade média na viagem'
+            - Name: metrics_trip_tripstarttimestamp
+              Type: timestamp
+              Comment: 'Timestamp de início da viagem'
+            # Insurance achatado
+            - Name: carinsurance_number
+              Type: string
+              Comment: 'Número da apólice de seguro'
+            - Name: carinsurance_provider
+              Type: string
+              Comment: 'Empresa seguradora'
+            - Name: carinsurance_validuntil
+              Type: date
+              Comment: 'Data de validade do seguro'
+            # Market achatado
+            - Name: market_currentprice
+              Type: double
+              Comment: 'Preço atual de mercado'
+            - Name: market_currency
+              Type: string
+              Comment: 'Moeda do preço'
+            - Name: market_location
+              Type: string
+              Comment: 'Localização do mercado'
+            - Name: market_dealer
+              Type: string
+              Comment: 'Concessionária'
+            - Name: market_warrantyyears
+              Type: double
+              Comment: 'Anos de garantia'
+            - Name: market_evaluator
+              Type: string
+              Comment: 'Avaliador de mercado'
+            # Colunas enriquecidas (calculated)
+            - Name: metrics_fuel_level_percentage
+              Type: double
+              Comment: 'Percentual de combustível (enriquecido)'
+            - Name: metrics_trip_km_per_liter
+              Type: double
+              Comment: 'Km por litro da viagem (enriquecido)'
+        PartitionKeys:
+          - Name: event_year
+            Type: string
+            Comment: 'Ano do evento (partição)'
+          - Name: event_month
+            Type: string
+            Comment: 'Mês do evento (partição)'
+          - Name: event_day
+            Type: string
+            Comment: 'Dia do evento (partição)'
+
+  # ========================================================================
+  # 4. GOLD TABLE - car_current_state (snapshot with Insurance KPIs)
+  # ========================================================================
+  GoldCarCurrentStateTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: gold_car_current_state
+        Description: 'Gold layer - Car Current State with Insurance KPIs (1 record per vehicle)'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+          sizeKey: '0'
+          objectCount: '0'
+          recordCount: '0'
+        StorageDescriptor:
+          Location: !Sub 's3://${GoldBucketName}/car_current_state/'
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            # Dados básicos do veículo
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi do veículo'
+            - Name: model
+              Type: string
+              Comment: 'Modelo do veículo'
+            - Name: year
+              Type: bigint
+              Comment: 'Ano de fabricação'
+            - Name: modelyear
+              Type: bigint
+              Comment: 'Ano do modelo'
+            - Name: manufacturer
+              Type: string
+              Comment: 'Fabricante do veículo'
+            - Name: horsepower
+              Type: bigint
+              Comment: 'Potência em cavalos'
+            - Name: gastype
+              Type: string
+              Comment: 'Tipo de combustível'
+            - Name: currentmileage
+              Type: bigint
+              Comment: 'Quilometragem atual (mais recente)'
+            - Name: color
+              Type: string
+              Comment: 'Cor do veículo'
+            - Name: fuelcapacityliters
+              Type: bigint
+              Comment: 'Capacidade do tanque em litros'
+            # Métricas atuais
+            - Name: metrics_enginetempcelsius
+              Type: bigint
+              Comment: 'Temperatura do motor em Celsius'
+            - Name: metrics_oiltempcelsius
+              Type: bigint
+              Comment: 'Temperatura do óleo em Celsius'
+            - Name: metrics_batterychargeper
+              Type: bigint
+              Comment: 'Percentual de carga da bateria'
+            - Name: metrics_fuelavailableliters
+              Type: double
+              Comment: 'Combustível disponível em litros'
+            - Name: metrics_coolantcelsius
+              Type: bigint
+              Comment: 'Temperatura do radiador em Celsius'
+            - Name: metrics_metrictimestamp
+              Type: string
+              Comment: 'Timestamp da métrica'
+            # Trip atual
+            - Name: metrics_trip_tripmileage
+              Type: bigint
+              Comment: 'Quilometragem da viagem'
+            - Name: metrics_trip_triptimeminutes
+              Type: bigint
+              Comment: 'Duração da viagem em minutos'
+            - Name: metrics_trip_tripfuelliters
+              Type: double
+              Comment: 'Combustível consumido na viagem'
+            - Name: metrics_trip_tripmaxspeedkm
+              Type: bigint
+              Comment: 'Velocidade máxima na viagem'
+            - Name: metrics_trip_tripaveragespeedkm
+              Type: bigint
+              Comment: 'Velocidade média na viagem'
+            - Name: metrics_trip_tripstarttimestamp
+              Type: string
+              Comment: 'Timestamp de início da viagem'
+            # Insurance
+            - Name: carinsurance_number
+              Type: string
+              Comment: 'Número da apólice de seguro'
+            - Name: carinsurance_provider
+              Type: string
+              Comment: 'Empresa seguradora'
+            - Name: carinsurance_validuntil
+              Type: string
+              Comment: 'Data de validade do seguro'
+            # Market
+            - Name: market_currentprice
+              Type: bigint
+              Comment: 'Preço atual de mercado'
+            - Name: market_currency
+              Type: string
+              Comment: 'Moeda do preço'
+            - Name: market_location
+              Type: string
+              Comment: 'Localização do mercado'
+            - Name: market_dealer
+              Type: string
+              Comment: 'Concessionária'
+            - Name: market_warrantyyears
+              Type: bigint
+              Comment: 'Anos de garantia'
+            - Name: market_evaluator
+              Type: string
+              Comment: 'Avaliador de mercado'
+            # Event partitions
+            - Name: event_year
+              Type: string
+              Comment: 'Ano do evento (partição)'
+            - Name: event_month
+              Type: string
+              Comment: 'Mês do evento (partição)'
+            - Name: event_day
+              Type: string
+              Comment: 'Dia do evento (partição)'
+            # *** NOVOS KPIs DE SEGURO ***
+            - Name: insurance_status
+              Type: string
+              Comment: 'Status do seguro: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO'
+            - Name: insurance_days_expired
+              Type: int
+              Comment: 'Numero de dias desde o vencimento do seguro'
+            # Metadados Gold
+            - Name: gold_processing_timestamp
+              Type: timestamp
+              Comment: 'Timestamp de processamento na camada Gold'
+            - Name: gold_snapshot_date
+              Type: date
+              Comment: 'Data do snapshot Gold'
+
+  # ========================================================================
+  # 5. GOLD TABLE - performance_alerts_log_slim (optimized)
+  # ========================================================================
+  GoldPerformanceAlertsSlimTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: performance_alerts_log_slim
+        Description: 'Gold layer - Performance Alerts Optimized (7 columns - 80% storage reduction)'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+          sizeKey: '0'
+          objectCount: '0'
+          recordCount: '0'
+        StorageDescriptor:
+          Location: !Sub 's3://${GoldBucketName}/performance_alerts_log_slim/'
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            # Apenas colunas essenciais (SLIM)
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi do veículo'
+            - Name: metrics_metrictimestamp
+              Type: string
+              Comment: 'Timestamp da métrica'
+            - Name: alert_type
+              Type: string
+              Comment: 'Tipo de alerta: OVERHEAT_ENGINE, OVERHEAT_OIL, SPEED_VIOLATION'
+            - Name: alert_value
+              Type: double
+              Comment: 'Valor da métrica que gerou o alerta'
+        PartitionKeys:
+          - Name: alert_type
+            Type: string
+            Comment: 'Tipo de alerta (partição)'
+          - Name: event_year
+            Type: string
+            Comment: 'Ano do evento (partição)'
+          - Name: event_month
+            Type: string
+            Comment: 'Mês do evento (partição)'
+          - Name: event_day
+            Type: string
+            Comment: 'Dia do evento (partição)'
+
+  # ========================================================================
+  # 6. GOLD TABLE - fuel_efficiency_monthly (aggregated KPIs)
+  # ========================================================================
+  GoldFuelEfficiencyTable:
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref DataLakeDatabase
+      TableInput:
+        Name: fuel_efficiency_monthly
+        Description: 'Gold layer - Monthly Fuel Efficiency KPIs (aggregated by car and month)'
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          compressionType: snappy
+          typeOfData: file
+          sizeKey: '0'
+          objectCount: '0'
+          recordCount: '0'
+        StorageDescriptor:
+          Location: !Sub 's3://${GoldBucketName}/fuel_efficiency_monthly/'
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          SerdeInfo:
+            SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+            Parameters:
+              serialization.format: '1'
+          Columns:
+            - Name: carchassis
+              Type: string
+              Comment: 'Identificador único do chassi do veículo'
+            - Name: manufacturer
+              Type: string
+              Comment: 'Fabricante do veículo'
+            - Name: model
+              Type: string
+              Comment: 'Modelo do veículo'
+            - Name: total_mileage
+              Type: double
+              Comment: 'Quilometragem total no mês'
+            - Name: total_fuel
+              Type: double
+              Comment: 'Combustível total consumido no mês'
+            - Name: km_per_liter
+              Type: double
+              Comment: 'Eficiência: km por litro (calculado)'
+            - Name: trip_count
+              Type: bigint
+              Comment: 'Número de viagens no mês'
+            - Name: avg_speed
+              Type: double
+              Comment: 'Velocidade média no mês'
+            - Name: max_speed
+              Type: double
+              Comment: 'Velocidade máxima no mês'
+        PartitionKeys:
+          - Name: event_year
+            Type: string
+            Comment: 'Ano do evento (partição)'
+          - Name: event_month
+            Type: string
+            Comment: 'Mês do evento (partição)'
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Database Information
+  # ========================================================================
+  DatabaseName:
+    Description: Nome do Glue Catalog Database
+    Value: !Ref DataLakeDatabase
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-database-name'
+      
+  DatabaseArn:
+    Description: ARN do Glue Catalog Database
+    Value: !Sub 'arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${DataLakeDatabase}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-database-arn'
+      
+  # ========================================================================
+  # Table Names
+  # ========================================================================
+  BronzeTableName:
+    Description: Nome da tabela Bronze (car data)
+    Value: !Ref BronzeCarDataTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-table-name'
+      
+  SilverTableName:
+    Description: Nome da tabela Silver (car telemetry)
+    Value: !Ref SilverCarTelemetryTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-table-name'
+      
+  GoldCurrentStateTableName:
+    Description: Nome da tabela Gold (current state)
+    Value: !Ref GoldCarCurrentStateTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-current-state-table-name'
+      
+  GoldAlertsSlimTableName:
+    Description: Nome da tabela Gold (alerts slim)
+    Value: !Ref GoldPerformanceAlertsSlimTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-alerts-slim-table-name'
+      
+  GoldFuelEfficiencyTableName:
+    Description: Nome da tabela Gold (fuel efficiency)
+    Value: !Ref GoldFuelEfficiencyTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-fuel-efficiency-table-name'
+      
+  # ========================================================================
+  # Catalog Summary
+  # ========================================================================
+  CatalogSummary:
+    Description: Resumo do Glue Catalog
+    Value: !Sub |
+      Glue Catalog - ${Environment}
+      =============================
+      Database: ${DataLakeDatabase}
+      
+      Tables:
+      1. Bronze: ${BronzeCarDataTable}
+         Location: s3://${BronzeBucketName}/bronze/car_data/
+         Schema: Nested structures (preserves JSON hierarchy)
+         Partitions: ingest_year/month/day
+      
+      2. Silver: ${SilverCarTelemetryTable}
+         Location: s3://${SilverBucketName}/car_telemetry/
+         Schema: Flat structure (all metrics flattened)
+         Partitions: event_year/month/day
+         
+      3. Gold Current State: ${GoldCarCurrentStateTable}
+         Location: s3://${GoldBucketName}/car_current_state/
+         Schema: Current state + Insurance KPIs
+         Partitions: None (snapshot table)
+         NEW: insurance_status, insurance_days_expired
+         
+      4. Gold Alerts Slim: ${GoldPerformanceAlertsSlimTable}
+         Location: s3://${GoldBucketName}/performance_alerts_log_slim/
+         Schema: Only 7 essential columns (80% reduction)
+         Partitions: alert_type/event_year/month/day
+         
+      5. Gold Fuel Efficiency: ${GoldFuelEfficiencyTable}
+         Location: s3://${GoldBucketName}/fuel_efficiency_monthly/
+         Schema: Monthly aggregated KPIs
+         Partitions: event_year/month

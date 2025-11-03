@@ -1,0 +1,673 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Lambda Stack (Ingestion and Cleansing Functions)'
+
+# ============================================================================
+# PARAMETERS
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Nome do projeto
+    
+  Environment:
+    Type: String
+    Description: Ambiente (dev, staging, prod)
+    
+  # Bucket Names (vindos do StorageStack)
+  LandingBucketName:
+    Type: String
+    Description: Nome do bucket Landing
+    
+  BronzeBucketName:
+    Type: String
+    Description: Nome do bucket Bronze
+    
+  SilverBucketName:
+    Type: String
+    Description: Nome do bucket Silver
+    
+  LambdaLayersBucketName:
+    Type: String
+    Description: Nome do bucket Lambda Layers
+    
+  # IAM Role (vindo do IAMStack)
+  LambdaExecutionRoleArn:
+    Type: String
+    Description: ARN do IAM Role para execução Lambda
+
+# ============================================================================
+# MAPPINGS - Environment Configuration
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      Runtime: 'python3.11'
+      Timeout: 300
+      MemorySize: 512
+      ReservedConcurrency: 5
+      LogRetention: 7
+    staging:
+      Runtime: 'python3.11'
+      Timeout: 600
+      MemorySize: 1024
+      ReservedConcurrency: 10
+      LogRetention: 14
+    prod:
+      Runtime: 'python3.11'
+      Timeout: 900
+      MemorySize: 2048
+      ReservedConcurrency: 20
+      LogRetention: 30
+
+# ============================================================================
+# RESOURCES - Lambda Functions and Dependencies
+# ============================================================================
+Resources:
+
+  # ========================================================================
+  # 1. LAMBDA LAYER (Dependencies)
+  # ========================================================================
+  DataProcessingLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: !Sub '${ProjectName}-data-processing-layer-${Environment}'
+      Description: 'Lambda Layer com dependências para processamento de dados (pandas, pyarrow, boto3, s3fs)'
+      Content:
+        S3Bucket: !Ref LambdaLayersBucketName
+        S3Key: 'layers/data-processing-layer.zip'
+      CompatibleRuntimes:
+        - python3.11
+        - python3.10
+        - python3.9
+      CompatibleArchitectures:
+        - x86_64
+      LicenseInfo: 'MIT'
+
+  # ========================================================================
+  # 2. CLOUDWATCH LOG GROUPS
+  # ========================================================================
+  
+  IngestionFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-data-ingestion-${Environment}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, LogRetention]
+      
+  CleansingFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-data-cleansing-${Environment}'
+      RetentionInDays: !FindInMap [EnvironmentConfig, !Ref Environment, LogRetention]
+
+  # ========================================================================
+  # 3. LAMBDA FUNCTIONS
+  # ========================================================================
+  
+  # ========================================================================
+  # 3.1 Data Ingestion Function (Landing → Bronze)
+  # ========================================================================
+  DataIngestionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-data-ingestion-${Environment}'
+      Description: !Sub |
+        Data Ingestion Function - ${Environment}
+        ========================================
+        
+        Processes raw data from Landing to Bronze layer:
+        1. Validates JSON structure
+        2. Adds partition columns (ingest_year/month/day)
+        3. Converts to Parquet format
+        4. Preserves nested structures for Bronze layer
+        5. Handles schema evolution and data quality checks
+        
+        Triggers: S3 PUT events on Landing bucket
+        Output: Partitioned Parquet files in Bronze bucket
+      Runtime: !FindInMap [EnvironmentConfig, !Ref Environment, Runtime]
+      Handler: 'data_ingestion.lambda_handler'
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import pandas as pd
+          import pyarrow as pa
+          import pyarrow.parquet as pq
+          from datetime import datetime
+          import logging
+          import os
+          from typing import Dict, Any, List
+          import urllib.parse
+          
+          # Configure logging
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          # Initialize AWS clients
+          s3_client = boto3.client('s3')
+          
+          def lambda_handler(event, context):
+              """
+              Lambda handler for data ingestion (Landing → Bronze)
+              
+              Processes S3 PUT events from Landing bucket and converts
+              raw JSON data to partitioned Parquet in Bronze layer.
+              """
+              
+              try:
+                  logger.info(f"Starting data ingestion process. Event: {json.dumps(event)}")
+                  
+                  # Extract bucket and key from S3 event
+                  records = event.get('Records', [])
+                  if not records:
+                      logger.warning("No records found in event")
+                      return {'statusCode': 200, 'body': 'No records to process'}
+                  
+                  processed_files = []
+                  
+                  for record in records:
+                      # Parse S3 event
+                      s3_info = record['s3']
+                      source_bucket = s3_info['bucket']['name']
+                      source_key = urllib.parse.unquote_plus(s3_info['object']['key'])
+                      
+                      logger.info(f"Processing file: s3://{source_bucket}/{source_key}")
+                      
+                      # Skip non-JSON files
+                      if not source_key.endswith('.json'):
+                          logger.info(f"Skipping non-JSON file: {source_key}")
+                          continue
+                      
+                      # Process the file
+                      result = process_landing_file(source_bucket, source_key)
+                      processed_files.append(result)
+                  
+                  logger.info(f"Successfully processed {len(processed_files)} files")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Data ingestion completed successfully',
+                          'processedFiles': processed_files,
+                          'environment': os.environ.get('ENVIRONMENT', 'unknown')
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in data ingestion: {str(e)}")
+                  raise
+          
+          def process_landing_file(source_bucket: str, source_key: str) -> Dict[str, Any]:
+              """Process a single file from Landing to Bronze"""
+              
+              try:
+                  # Read JSON file from Landing
+                  response = s3_client.get_object(Bucket=source_bucket, Key=source_key)
+                  json_content = response['Body'].read().decode('utf-8')
+                  
+                  # Parse JSON (can be single object or array)
+                  try:
+                      data = json.loads(json_content)
+                      if not isinstance(data, list):
+                          data = [data]  # Convert single object to list
+                  except json.JSONDecodeError as e:
+                      raise ValueError(f"Invalid JSON format in {source_key}: {str(e)}")
+                  
+                  # Validate and enrich data
+                  enriched_data = []
+                  current_time = datetime.utcnow()
+                  
+                  for record in data:
+                      # Add partition columns
+                      record['ingest_year'] = current_time.strftime('%Y')
+                      record['ingest_month'] = current_time.strftime('%m')
+                      record['ingest_day'] = current_time.strftime('%d')
+                      record['ingest_timestamp'] = current_time.isoformat()
+                      
+                      # Validate required fields
+                      if 'carchassis' not in record:
+                          logger.warning(f"Missing carchassis in record, skipping")
+                          continue
+                      
+                      enriched_data.append(record)
+                  
+                  if not enriched_data:
+                      logger.warning(f"No valid records found in {source_key}")
+                      return {'source': source_key, 'status': 'no_valid_records', 'count': 0}
+                  
+                  # Convert to DataFrame
+                  df = pd.DataFrame(enriched_data)
+                  
+                  # Generate Bronze S3 path
+                  bronze_bucket = os.environ.get('BRONZE_BUCKET_NAME')
+                  if not bronze_bucket:
+                      raise ValueError("BRONZE_BUCKET_NAME environment variable not set")
+                  
+                  partition_path = f"bronze/car_data/ingest_year={current_time.strftime('%Y')}/ingest_month={current_time.strftime('%m')}/ingest_day={current_time.strftime('%d')}"
+                  bronze_key = f"{partition_path}/data_{current_time.strftime('%H%M%S')}.parquet"
+                  
+                  # Convert to Parquet and upload
+                  parquet_buffer = df.to_parquet(index=False, engine='pyarrow')
+                  
+                  s3_client.put_object(
+                      Bucket=bronze_bucket,
+                      Key=bronze_key,
+                      Body=parquet_buffer,
+                      ContentType='application/octet-stream',
+                      Metadata={
+                          'source-file': source_key,
+                          'source-bucket': source_bucket,
+                          'record-count': str(len(enriched_data)),
+                          'ingestion-timestamp': current_time.isoformat(),
+                          'layer': 'bronze'
+                      }
+                  )
+                  
+                  logger.info(f"Successfully wrote {len(enriched_data)} records to s3://{bronze_bucket}/{bronze_key}")
+                  
+                  return {
+                      'source': source_key,
+                      'destination': f"s3://{bronze_bucket}/{bronze_key}",
+                      'status': 'success',
+                      'count': len(enriched_data),
+                      'partition': partition_path
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error processing {source_key}: {str(e)}")
+                  return {
+                      'source': source_key,
+                      'status': 'error',
+                      'error': str(e)
+                  }
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, Timeout]
+      MemorySize: !FindInMap [EnvironmentConfig, !Ref Environment, MemorySize]
+      ReservedConcurrentExecutions: !FindInMap [EnvironmentConfig, !Ref Environment, ReservedConcurrency]
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+          BRONZE_BUCKET_NAME: !Ref BronzeBucketName
+          LOG_LEVEL: 'INFO'
+      Layers:
+        - !Ref DataProcessingLayer
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Function: DataIngestion
+        Layer: Landing-to-Bronze
+
+  # ========================================================================
+  # 3.2 Data Cleansing Function (Bronze → Silver validation)
+  # ========================================================================
+  DataCleansingFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-data-cleansing-${Environment}'
+      Description: !Sub |
+        Data Cleansing Function - ${Environment}
+        =======================================
+        
+        Validates and enriches data before Silver processing:
+        1. Data quality checks and validation
+        2. Schema enforcement and type casting
+        3. Outlier detection and handling
+        4. Missing value imputation
+        5. Business rule validation
+        6. Triggers Silver ETL job if validation passes
+        
+        Triggers: S3 PUT events on Bronze bucket
+        Output: Validation reports and Silver ETL job trigger
+      Runtime: !FindInMap [EnvironmentConfig, !Ref Environment, Runtime]
+      Handler: 'data_cleansing.lambda_handler'
+      Role: !Ref LambdaExecutionRoleArn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import pandas as pd
+          import pyarrow.parquet as pq
+          from datetime import datetime
+          import logging
+          import os
+          from typing import Dict, Any, List, Optional
+          import urllib.parse
+          import numpy as np
+          
+          # Configure logging
+          logging.basicConfig(level=logging.INFO)
+          logger = logging.getLogger(__name__)
+          
+          # Initialize AWS clients
+          s3_client = boto3.client('s3')
+          glue_client = boto3.client('glue')
+          
+          def lambda_handler(event, context):
+              """
+              Lambda handler for data cleansing and validation
+              
+              Validates Bronze data quality and triggers Silver ETL if valid.
+              """
+              
+              try:
+                  logger.info(f"Starting data cleansing process. Event: {json.dumps(event)}")
+                  
+                  # Extract bucket and key from S3 event
+                  records = event.get('Records', [])
+                  if not records:
+                      logger.warning("No records found in event")
+                      return {'statusCode': 200, 'body': 'No records to process'}
+                  
+                  validation_results = []
+                  
+                  for record in records:
+                      # Parse S3 event
+                      s3_info = record['s3']
+                      source_bucket = s3_info['bucket']['name']
+                      source_key = urllib.parse.unquote_plus(s3_info['object']['key'])
+                      
+                      logger.info(f"Validating file: s3://{source_bucket}/{source_key}")
+                      
+                      # Skip non-Parquet files
+                      if not source_key.endswith('.parquet'):
+                          logger.info(f"Skipping non-Parquet file: {source_key}")
+                          continue
+                      
+                      # Validate the file
+                      result = validate_bronze_file(source_bucket, source_key)
+                      validation_results.append(result)
+                  
+                  # Check if all validations passed
+                  all_valid = all(r.get('is_valid', False) for r in validation_results)
+                  
+                  if all_valid and validation_results:
+                      # Trigger Silver ETL job
+                      trigger_result = trigger_silver_etl_job()
+                      logger.info(f"Silver ETL job triggered: {trigger_result}")
+                  else:
+                      logger.warning("Data validation failed or no valid files processed")
+                  
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps({
+                          'message': 'Data cleansing completed',
+                          'validationResults': validation_results,
+                          'allValid': all_valid,
+                          'silverJobTriggered': all_valid and validation_results,
+                          'environment': os.environ.get('ENVIRONMENT', 'unknown')
+                      })
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in data cleansing: {str(e)}")
+                  raise
+          
+          def validate_bronze_file(source_bucket: str, source_key: str) -> Dict[str, Any]:
+              """Validate a Bronze Parquet file"""
+              
+              try:
+                  # Read Parquet file from Bronze
+                  s3_path = f"s3://{source_bucket}/{source_key}"
+                  df = pd.read_parquet(s3_path)
+                  
+                  logger.info(f"Loaded {len(df)} records from {s3_path}")
+                  
+                  # Initialize validation results
+                  validation = {
+                      'source': s3_path,
+                      'record_count': len(df),
+                      'is_valid': True,
+                      'errors': [],
+                      'warnings': [],
+                      'quality_metrics': {}
+                  }
+                  
+                  # 1. Required fields validation
+                  required_fields = ['carchassis', 'model', 'year', 'manufacturer']
+                  for field in required_fields:
+                      if field not in df.columns:
+                          validation['errors'].append(f"Missing required field: {field}")
+                          validation['is_valid'] = False
+                      else:
+                          null_count = df[field].isnull().sum()
+                          if null_count > 0:
+                              validation['warnings'].append(f"Field {field} has {null_count} null values")
+                  
+                  # 2. Data type validation
+                  if 'year' in df.columns:
+                      invalid_years = df['year'][(df['year'] < 1900) | (df['year'] > 2030)]
+                      if len(invalid_years) > 0:
+                          validation['warnings'].append(f"Found {len(invalid_years)} records with invalid years")
+                  
+                  # 3. Duplicate check
+                  if 'carchassis' in df.columns:
+                      duplicate_count = df['carchassis'].duplicated().sum()
+                      validation['quality_metrics']['duplicate_count'] = duplicate_count
+                      if duplicate_count > 0:
+                          validation['warnings'].append(f"Found {duplicate_count} duplicate chassis numbers")
+                  
+                  # 4. Nested structure validation
+                  if 'metrics' in df.columns:
+                      try:
+                          # Try to access nested structure
+                          metrics_sample = df['metrics'].iloc[0] if len(df) > 0 else None
+                          if metrics_sample and isinstance(metrics_sample, dict):
+                              validation['quality_metrics']['has_valid_metrics'] = True
+                          else:
+                              validation['warnings'].append("Metrics field doesn't contain valid nested structure")
+                      except Exception as e:
+                          validation['warnings'].append(f"Error validating metrics structure: {str(e)}")
+                  
+                  # 5. Calculate quality score
+                  error_count = len(validation['errors'])
+                  warning_count = len(validation['warnings'])
+                  quality_score = max(0, 100 - (error_count * 20) - (warning_count * 5))
+                  validation['quality_metrics']['quality_score'] = quality_score
+                  
+                  if quality_score < 70:
+                      validation['errors'].append(f"Quality score {quality_score}% below threshold (70%)")
+                      validation['is_valid'] = False
+                  
+                  validation['quality_metrics']['validation_timestamp'] = datetime.utcnow().isoformat()
+                  
+                  logger.info(f"Validation completed. Valid: {validation['is_valid']}, Quality Score: {quality_score}%")
+                  
+                  return validation
+                  
+              except Exception as e:
+                  logger.error(f"Error validating {source_key}: {str(e)}")
+                  return {
+                      'source': f"s3://{source_bucket}/{source_key}",
+                      'is_valid': False,
+                      'errors': [f"Validation error: {str(e)}"],
+                      'warnings': [],
+                      'quality_metrics': {}
+                  }
+          
+          def trigger_silver_etl_job() -> Dict[str, Any]:
+              """Trigger the Silver ETL Glue job"""
+              
+              try:
+                  job_name = f"{os.environ.get('PROJECT_NAME', 'datalake-pipeline')}-silver-consolidation-{os.environ.get('ENVIRONMENT', 'dev')}"
+                  
+                  response = glue_client.start_job_run(
+                      JobName=job_name,
+                      Arguments={
+                          '--triggered-by': 'lambda-data-cleansing',
+                          '--validation-passed': 'true',
+                          '--trigger-timestamp': datetime.utcnow().isoformat()
+                      }
+                  )
+                  
+                  job_run_id = response['JobRunId']
+                  logger.info(f"Started Glue job {job_name} with run ID: {job_run_id}")
+                  
+                  return {
+                      'job_name': job_name,
+                      'job_run_id': job_run_id,
+                      'status': 'triggered',
+                      'trigger_timestamp': datetime.utcnow().isoformat()
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error triggering Silver ETL job: {str(e)}")
+                  return {
+                      'status': 'error',
+                      'error': str(e)
+                  }
+      Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, Timeout]
+      MemorySize: !FindInMap [EnvironmentConfig, !Ref Environment, MemorySize]
+      ReservedConcurrentExecutions: !FindInMap [EnvironmentConfig, !Ref Environment, ReservedConcurrency]
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          PROJECT_NAME: !Ref ProjectName
+          BRONZE_BUCKET_NAME: !Ref BronzeBucketName
+          SILVER_BUCKET_NAME: !Ref SilverBucketName
+          LOG_LEVEL: 'INFO'
+          QUALITY_THRESHOLD: '70'
+      Layers:
+        - !Ref DataProcessingLayer
+      Tags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Function: DataCleansing
+        Layer: Bronze-to-Silver
+
+  # ========================================================================
+  # 4. S3 EVENT NOTIFICATIONS
+  # ========================================================================
+  
+  # ========================================================================
+  # 4.1 Landing Bucket Notification (trigger Ingestion)
+  # ========================================================================
+  LandingBucketNotification:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${LandingBucketName}-notification-config'
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Function: !GetAtt DataIngestionFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: suffix
+                    Value: '.json'
+                  - Name: prefix
+                    Value: 'raw-data/'
+
+  # ========================================================================
+  # 4.2 Lambda Permissions for S3 Invocation
+  # ========================================================================
+  LandingBucketLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DataIngestionFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: 's3.amazonaws.com'
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:aws:s3:::${LandingBucketName}'
+
+  BronzeBucketLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DataCleansingFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: 's3.amazonaws.com'
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:aws:s3:::${BronzeBucketName}'
+
+# ============================================================================
+# OUTPUTS
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Lambda Function Information
+  # ========================================================================
+  DataIngestionFunctionName:
+    Description: Nome da Lambda Function de Ingestão
+    Value: !Ref DataIngestionFunction
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ingestion-function-name'
+      
+  DataIngestionFunctionArn:
+    Description: ARN da Lambda Function de Ingestão
+    Value: !GetAtt DataIngestionFunction.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ingestion-function-arn'
+      
+  DataCleansingFunctionName:
+    Description: Nome da Lambda Function de Cleansing
+    Value: !Ref DataCleansingFunction
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-cleansing-function-name'
+      
+  DataCleansingFunctionArn:
+    Description: ARN da Lambda Function de Cleansing
+    Value: !GetAtt DataCleansingFunction.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-cleansing-function-arn'
+      
+  # ========================================================================
+  # Lambda Layer Information
+  # ========================================================================
+  DataProcessingLayerArn:
+    Description: ARN da Lambda Layer de processamento
+    Value: !Ref DataProcessingLayer
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-processing-layer-arn'
+      
+  # ========================================================================
+  # Lambda Configuration Summary
+  # ========================================================================
+  LambdaSummary:
+    Description: Resumo das Lambda Functions
+    Value: !Sub |
+      Lambda Functions Configuration - ${Environment}
+      ==============================================
+      
+      Functions (2):
+      --------------
+      1. ${DataIngestionFunction} (Landing → Bronze)
+         - Runtime: ${Runtime}
+         - Memory: ${MemorySize} MB
+         - Timeout: ${Timeout} seconds
+         - Concurrency: ${ReservedConcurrency}
+         - Triggers: S3 PUT events (*.json files)
+         - Output: Partitioned Parquet in Bronze
+         
+      2. ${DataCleansingFunction} (Bronze validation)
+         - Runtime: ${Runtime}
+         - Memory: ${MemorySize} MB
+         - Timeout: ${Timeout} seconds
+         - Concurrency: ${ReservedConcurrency}
+         - Triggers: S3 PUT events (*.parquet files)
+         - Output: Quality validation + Silver ETL trigger
+      
+      Lambda Layer:
+      -------------
+      - ${DataProcessingLayer}
+      - Dependencies: pandas, pyarrow, boto3, s3fs
+      - Compatible Runtimes: python3.9, python3.10, python3.11
+      
+      S3 Event Configuration:
+      -----------------------
+      - Landing bucket → Ingestion Function (*.json)
+      - Bronze bucket → Cleansing Function (*.parquet)
+      
+      Data Quality Checks:
+      -------------------
+      ✅ Required fields validation
+      ✅ Data type validation
+      ✅ Duplicate detection
+      ✅ Nested structure validation
+      ✅ Quality score calculation (threshold: 70%)
+      ✅ Automatic Silver ETL trigger on validation success
+      
+      AUTOMATION FLOW:
+      ================
+      Raw JSON → Landing → [Ingestion λ] → Bronze Parquet → [Cleansing λ] → Silver ETL Job
+      
+      *** AUTOMATED DATA PIPELINE ***

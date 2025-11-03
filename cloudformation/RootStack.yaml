@@ -1,0 +1,397 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Data Lakehouse - Root Stack (Migração Terraform -> CloudFormation)'
+
+# ============================================================================
+# PARAMETERS - Configuração do Ambiente
+# ============================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: datalake-pipeline
+    Description: Nome do projeto usado como prefixo para recursos
+    
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Ambiente de deployment
+    
+  AWSRegion:
+    Type: String
+    Default: us-east-1
+    Description: Região AWS para deployment dos recursos
+    
+  TemplatesBucketName:
+    Type: String
+    Description: Nome do bucket S3 que contém os templates CFT aninhados
+    Default: datalake-pipeline-cft-templates
+    
+  TemplatesBucketPrefix:
+    Type: String
+    Description: Prefixo no bucket para os templates CFT
+    Default: templates/v1.0
+
+# ============================================================================
+# MAPPINGS - Configurações por Ambiente
+# ============================================================================
+Mappings:
+  EnvironmentConfig:
+    dev:
+      RetentionDays: 14
+      BackupRetentionDays: 7
+      MonitoringLevel: Standard
+    staging:
+      RetentionDays: 30
+      BackupRetentionDays: 14
+      MonitoringLevel: Enhanced
+    prod:
+      RetentionDays: 90
+      BackupRetentionDays: 30
+      MonitoringLevel: Enhanced
+
+# ============================================================================
+# RESOURCES - Nested Stacks
+# ============================================================================
+Resources:
+  
+  # ========================================================================
+  # 1. STORAGE STACK - S3 Buckets (Medallion Architecture)
+  # ========================================================================
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/StorageStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        RetentionDays: !FindInMap [EnvironmentConfig, !Ref Environment, RetentionDays]
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-storage-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Storage
+          
+  # ========================================================================
+  # 2. IAM STACK - Roles e Policies
+  # ========================================================================
+  IAMStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: StorageStack
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/IAMStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        # Passar ARNs dos buckets S3 do Storage Stack
+        LandingBucketArn: !GetAtt StorageStack.Outputs.LandingBucketArn
+        BronzeBucketArn: !GetAtt StorageStack.Outputs.BronzeBucketArn
+        SilverBucketArn: !GetAtt StorageStack.Outputs.SilverBucketArn
+        GoldBucketArn: !GetAtt StorageStack.Outputs.GoldBucketArn
+        GlueScriptsBucketArn: !GetAtt StorageStack.Outputs.GlueScriptsBucketArn
+        AthenaResultsBucketArn: !GetAtt StorageStack.Outputs.AthenaResultsBucketArn
+        LambdaLayersBucketArn: !GetAtt StorageStack.Outputs.LambdaLayersBucketArn
+        GlueTempBucketArn: !GetAtt StorageStack.Outputs.GlueTempBucketArn
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-iam-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: IAM
+          
+  # ========================================================================
+  # 3. GLUE CATALOG STACK - Database e Tables
+  # ========================================================================
+  GlueCatalogStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [StorageStack, IAMStack]
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/GlueCatalogStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        # Passar nomes dos buckets S3
+        BronzeBucketName: !GetAtt StorageStack.Outputs.BronzeBucketName
+        SilverBucketName: !GetAtt StorageStack.Outputs.SilverBucketName
+        GoldBucketName: !GetAtt StorageStack.Outputs.GoldBucketName
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-catalog-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: GlueCatalog
+          
+  # ========================================================================
+  # 4. ETL STACK - Glue Jobs e Crawlers
+  # ========================================================================
+  ETLStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [StorageStack, IAMStack, GlueCatalogStack]
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/ETLStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        # Passar recursos das outras stacks
+        DatabaseName: !GetAtt GlueCatalogStack.Outputs.DatabaseName
+        GlueScriptsBucketName: !GetAtt StorageStack.Outputs.GlueScriptsBucketName
+        SilverBucketName: !GetAtt StorageStack.Outputs.SilverBucketName
+        GoldBucketName: !GetAtt StorageStack.Outputs.GoldBucketName
+        BronzeBucketName: !GetAtt StorageStack.Outputs.BronzeBucketName
+        GlueTempBucketName: !GetAtt StorageStack.Outputs.GlueTempBucketName
+        # IAM Roles
+        GlueJobRoleArn: !GetAtt IAMStack.Outputs.GlueJobRoleArn
+        GlueCrawlerRoleArn: !GetAtt IAMStack.Outputs.GlueCrawlerRoleArn
+        GoldJobRoleArn: !GetAtt IAMStack.Outputs.GoldJobRoleArn
+        GoldCrawlerRoleArn: !GetAtt IAMStack.Outputs.GoldCrawlerRoleArn
+        GoldAlertsJobRoleArn: !GetAtt IAMStack.Outputs.GoldAlertsJobRoleArn
+        GoldAlertsCrawlerRoleArn: !GetAtt IAMStack.Outputs.GoldAlertsCrawlerRoleArn
+        GoldAlertsSlimJobRoleArn: !GetAtt IAMStack.Outputs.GoldAlertsSlimJobRoleArn
+        GoldAlertsSlimCrawlerRoleArn: !GetAtt IAMStack.Outputs.GoldAlertsSlimCrawlerRoleArn
+        GoldFuelJobRoleArn: !GetAtt IAMStack.Outputs.GoldFuelJobRoleArn
+        GoldFuelCrawlerRoleArn: !GetAtt IAMStack.Outputs.GoldFuelCrawlerRoleArn
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-etl-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: ETL
+          
+  # ========================================================================
+  # 5. WORKFLOW STACK - Orquestração (Triggers Condicionais)
+  # ========================================================================
+  WorkflowStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [StorageStack, IAMStack, GlueCatalogStack, ETLStack]
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/WorkflowStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        # Passar nomes dos jobs e crawlers do ETL Stack
+        SilverJobName: !GetAtt ETLStack.Outputs.SilverJobName
+        SilverCrawlerName: !GetAtt ETLStack.Outputs.SilverCrawlerName
+        GoldCurrentStateJobName: !GetAtt ETLStack.Outputs.GoldCurrentStateJobName
+        GoldCurrentStateCrawlerName: !GetAtt ETLStack.Outputs.GoldCurrentStateCrawlerName
+        GoldAlertsJobName: !GetAtt ETLStack.Outputs.GoldAlertsJobName
+        GoldAlertsCrawlerName: !GetAtt ETLStack.Outputs.GoldAlertsCrawlerName
+        GoldAlertsSlimJobName: !GetAtt ETLStack.Outputs.GoldAlertsSlimJobName
+        GoldAlertsSlimCrawlerName: !GetAtt ETLStack.Outputs.GoldAlertsSlimCrawlerName
+        GoldFuelJobName: !GetAtt ETLStack.Outputs.GoldFuelJobName
+        GoldFuelCrawlerName: !GetAtt ETLStack.Outputs.GoldFuelCrawlerName
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-workflow-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Workflow
+          
+  # ========================================================================
+  # 6. LAMBDA STACK - Ingestion e Cleansing (Opcional)
+  # ========================================================================
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [StorageStack, IAMStack]
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/LambdaStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        LandingBucketName: !GetAtt StorageStack.Outputs.LandingBucketName
+        BronzeBucketName: !GetAtt StorageStack.Outputs.BronzeBucketName
+        SilverBucketName: !GetAtt StorageStack.Outputs.SilverBucketName
+        LambdaLayersBucketName: !GetAtt StorageStack.Outputs.LambdaLayersBucketName
+        LambdaExecutionRoleArn: !GetAtt IAMStack.Outputs.LambdaExecutionRoleArn
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-lambda-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Lambda
+          
+  # ========================================================================
+  # 7. ATHENA STACK - Workgroup e Configurações
+  # ========================================================================
+  AthenaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: [StorageStack, IAMStack]
+    Properties:
+      TemplateURL: !Sub 
+        - 'https://${BucketName}.s3.${AWS::Region}.amazonaws.com/${Prefix}/AthenaStack.yaml'
+        - BucketName: !Ref TemplatesBucketName
+          Prefix: !Ref TemplatesBucketPrefix
+      Parameters:
+        ProjectName: !Ref ProjectName
+        Environment: !Ref Environment
+        AthenaResultsBucketName: !GetAtt StorageStack.Outputs.AthenaResultsBucketName
+        AthenaExecutionRoleArn: !GetAtt IAMStack.Outputs.AthenaExecutionRoleArn
+        DatabaseName: !GetAtt GlueCatalogStack.Outputs.DatabaseName
+      Tags:
+        - Key: StackName
+          Value: !Sub '${ProjectName}-athena-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Component
+          Value: Athena
+
+# ============================================================================
+# OUTPUTS - Principais recursos expostos
+# ============================================================================
+Outputs:
+  
+  # ========================================================================
+  # Stack Information
+  # ========================================================================
+  StackName:
+    Description: Nome do Root Stack
+    Value: !Ref AWS::StackName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-root-stack-name'
+      
+  Environment:
+    Description: Ambiente de deployment
+    Value: !Ref Environment
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-environment'
+      
+  ProjectName:
+    Description: Nome do projeto
+    Value: !Ref ProjectName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-project-name'
+      
+  # ========================================================================
+  # Storage Outputs
+  # ========================================================================
+  LandingBucketName:
+    Description: Nome do bucket Landing (ponto de entrada)
+    Value: !GetAtt StorageStack.Outputs.LandingBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-landing-bucket'
+      
+  BronzeBucketName:
+    Description: Nome do bucket Bronze (dados brutos)
+    Value: !GetAtt StorageStack.Outputs.BronzeBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-bronze-bucket'
+      
+  SilverBucketName:
+    Description: Nome do bucket Silver (dados limpos)
+    Value: !GetAtt StorageStack.Outputs.SilverBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-silver-bucket'
+      
+  GoldBucketName:
+    Description: Nome do bucket Gold (dados de negócio)
+    Value: !GetAtt StorageStack.Outputs.GoldBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-gold-bucket'
+      
+  # ========================================================================
+  # Catalog Outputs
+  # ========================================================================
+  DatabaseName:
+    Description: Nome do Glue Catalog Database
+    Value: !GetAtt GlueCatalogStack.Outputs.DatabaseName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-database-name'
+      
+  # ========================================================================
+  # Workflow Outputs
+  # ========================================================================
+  WorkflowName:
+    Description: Nome do Glue Workflow principal
+    Value: !GetAtt WorkflowStack.Outputs.WorkflowName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-name'
+      
+  WorkflowArn:
+    Description: ARN do Glue Workflow principal
+    Value: !GetAtt WorkflowStack.Outputs.WorkflowArn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-workflow-arn'
+      
+  # ========================================================================
+  # Athena Outputs
+  # ========================================================================
+  AthenaWorkgroupName:
+    Description: Nome do Athena Workgroup
+    Value: !GetAtt AthenaStack.Outputs.WorkgroupName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-workgroup'
+      
+  AthenaResultsBucketName:
+    Description: Nome do bucket para resultados Athena
+    Value: !GetAtt StorageStack.Outputs.AthenaResultsBucketName
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-athena-results-bucket'
+      
+  # ========================================================================
+  # ETL Summary
+  # ========================================================================
+  ETLSummary:
+    Description: Resumo dos componentes ETL
+    Value: !Sub |
+      Data Lakehouse Pipeline - ${Environment}
+      =====================================
+      Pipeline: Landing → Bronze → Silver → Gold
+      
+      Buckets:
+      - Landing: ${StorageStack.Outputs.LandingBucketName}
+      - Bronze: ${StorageStack.Outputs.BronzeBucketName} 
+      - Silver: ${StorageStack.Outputs.SilverBucketName}
+      - Gold: ${StorageStack.Outputs.GoldBucketName}
+      
+      Workflow: ${WorkflowStack.Outputs.WorkflowName}
+      Database: ${GlueCatalogStack.Outputs.DatabaseName}
+      Athena Workgroup: ${AthenaStack.Outputs.WorkgroupName}
+      
+      Console URLs:
+      - Glue: https://console.aws.amazon.com/glue/home?region=${AWS::Region}
+      - Athena: https://console.aws.amazon.com/athena/home?region=${AWS::Region}
+      - S3: https://console.aws.amazon.com/s3/home?region=${AWS::Region}
+      
+  # ========================================================================
+  # Deployment Information
+  # ========================================================================
+  DeploymentInfo:
+    Description: Informações do deployment
+    Value: !Sub |
+      Root Stack: ${AWS::StackName}
+      Region: ${AWS::Region}
+      Timestamp: ${AWS::StackCreationTime}
+      
+      Nested Stacks:
+      1. Storage: ${StorageStack}
+      2. IAM: ${IAMStack}
+      3. Catalog: ${GlueCatalogStack}
+      4. ETL: ${ETLStack}
+      5. Workflow: ${WorkflowStack}
+      6. Lambda: ${LambdaStack}
+      7. Athena: ${AthenaStack}
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-deployment-info'
