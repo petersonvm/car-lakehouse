@@ -13,7 +13,7 @@
     "engineTempCelsius": 98,
     "oilTempCelsius": 105,
     "batteryChargePerc": 65,
-    "fuelAvailableLiters": 32,
+    "fuelAvailableLiters": 32.0,
     "coolantCelsius": 90,
     "trip": {
       "tripMileage": 16,

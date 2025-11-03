@@ -332,14 +332,243 @@ resource "aws_iam_role_policy" "gold_crawler_cloudwatch" {
 }
 
 # ============================================================================
-# 6. AWS GLUE CRAWLER - GOLD CAR CURRENT STATE
+# 6. AWS GLUE CATALOG TABLE - GOLD CAR CURRENT STATE (PRE-DEFINED SCHEMA)
+# ============================================================================
+
+# Definição explícita da tabela para incluir as novas colunas de KPIs de Seguro
+# Nota: O crawler irá atualizar/adicionar colunas automaticamente, mas definimos
+# o schema inicial para garantir que as novas colunas sejam reconhecidas
+resource "aws_glue_catalog_table" "gold_car_current_state" {
+  name          = "gold_car_current_state"
+  database_name = aws_glue_catalog_database.data_lake_database.name
+  description   = "Gold layer table - Car Current State with Insurance KPIs"
+
+  table_type = "EXTERNAL_TABLE"
+
+  storage_descriptor {
+    location      = "s3://${aws_s3_bucket.data_lake["gold"].id}/car_current_state/"
+    input_format  = "org.apache.hadoop.mapred.TextInputFormat"
+    output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
+
+    ser_de_info {
+      serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+    }
+
+    # Schema inicial com todas as colunas Silver + KPIs de Seguro
+    columns {
+      name    = "carchassis"
+      type    = "string"
+      comment = "Identificador único do chassi do veículo"
+    }
+    columns {
+      name    = "model"
+      type    = "string"
+      comment = "Modelo do veículo"
+    }
+    columns {
+      name    = "year"
+      type    = "bigint"
+      comment = "Ano de fabricação"
+    }
+    columns {
+      name    = "modelyear"
+      type    = "bigint"
+      comment = "Ano do modelo"
+    }
+    columns {
+      name    = "manufacturer"
+      type    = "string"
+      comment = "Fabricante do veículo"
+    }
+    columns {
+      name    = "horsepower"
+      type    = "bigint"
+      comment = "Potência em cavalos"
+    }
+    columns {
+      name    = "gastype"
+      type    = "string"
+      comment = "Tipo de combustível"
+    }
+    columns {
+      name    = "currentmileage"
+      type    = "bigint"
+      comment = "Quilometragem atual (mais recente)"
+    }
+    columns {
+      name    = "color"
+      type    = "string"
+      comment = "Cor do veículo"
+    }
+    columns {
+      name    = "fuelcapacityliters"
+      type    = "bigint"
+      comment = "Capacidade do tanque em litros"
+    }
+    columns {
+      name    = "metrics_enginetempcelsius"
+      type    = "bigint"
+      comment = "Temperatura do motor em Celsius"
+    }
+    columns {
+      name    = "metrics_oiltempcelsius"
+      type    = "bigint"
+      comment = "Temperatura do óleo em Celsius"
+    }
+    columns {
+      name    = "metrics_batterychargeper"
+      type    = "bigint"
+      comment = "Percentual de carga da bateria"
+    }
+    columns {
+      name    = "metrics_fuelavailableliters"
+      type    = "double"
+      comment = "Combustível disponível em litros"
+    }
+    columns {
+      name    = "metrics_coolantcelsius"
+      type    = "bigint"
+      comment = "Temperatura do radiador em Celsius"
+    }
+    columns {
+      name    = "metrics_trip_tripmileage"
+      type    = "bigint"
+      comment = "Quilometragem da viagem"
+    }
+    columns {
+      name    = "metrics_trip_triptimeminutes"
+      type    = "bigint"
+      comment = "Duração da viagem em minutos"
+    }
+    columns {
+      name    = "metrics_trip_tripfuelliters"
+      type    = "double"
+      comment = "Combustível consumido na viagem"
+    }
+    columns {
+      name    = "metrics_trip_tripmaxspeedkm"
+      type    = "bigint"
+      comment = "Velocidade máxima na viagem"
+    }
+    columns {
+      name    = "metrics_trip_tripaveragespeedkm"
+      type    = "bigint"
+      comment = "Velocidade média na viagem"
+    }
+    columns {
+      name    = "metrics_trip_tripstarttimestamp"
+      type    = "string"
+      comment = "Timestamp de início da viagem"
+    }
+    columns {
+      name    = "metrics_metrictimestamp"
+      type    = "string"
+      comment = "Timestamp da métrica"
+    }
+    columns {
+      name    = "carinsurance_number"
+      type    = "string"
+      comment = "Número da apólice de seguro"
+    }
+    columns {
+      name    = "carinsurance_provider"
+      type    = "string"
+      comment = "Empresa seguradora"
+    }
+    columns {
+      name    = "carinsurance_validuntil"
+      type    = "string"
+      comment = "Data de validade do seguro"
+    }
+    columns {
+      name    = "market_currentprice"
+      type    = "bigint"
+      comment = "Preço atual de mercado"
+    }
+    columns {
+      name    = "market_currency"
+      type    = "string"
+      comment = "Moeda do preço"
+    }
+    columns {
+      name    = "market_location"
+      type    = "string"
+      comment = "Localização do mercado"
+    }
+    columns {
+      name    = "market_dealer"
+      type    = "string"
+      comment = "Concessionária"
+    }
+    columns {
+      name    = "market_warrantyyears"
+      type    = "bigint"
+      comment = "Anos de garantia"
+    }
+    columns {
+      name    = "market_evaluator"
+      type    = "string"
+      comment = "Avaliador de mercado"
+    }
+    columns {
+      name    = "event_year"
+      type    = "string"
+      comment = "Ano do evento (partição)"
+    }
+    columns {
+      name    = "event_month"
+      type    = "string"
+      comment = "Mês do evento (partição)"
+    }
+    columns {
+      name    = "event_day"
+      type    = "string"
+      comment = "Dia do evento (partição)"
+    }
+    
+    # NOVAS COLUNAS: KPIs DE SEGURO
+    columns {
+      name    = "insurance_status"
+      type    = "string"
+      comment = "Status do seguro: VENCIDO, VENCENDO_EM_90_DIAS, ATIVO"
+    }
+    columns {
+      name    = "insurance_days_expired"
+      type    = "int"
+      comment = "Numero de dias desde o vencimento do seguro"
+    }
+    
+    # COLUNAS DE METADADOS GOLD
+    columns {
+      name    = "gold_processing_timestamp"
+      type    = "timestamp"
+      comment = "Timestamp de processamento na camada Gold"
+    }
+    columns {
+      name    = "gold_snapshot_date"
+      type    = "date"
+      comment = "Data do snapshot Gold"
+    }
+  }
+
+  # tags = {  # aws_glue_catalog_table não suporta tags
+  #   Name         = "gold_car_current_state"
+  #   Layer        = "Gold"
+  #   TableType    = "Current-State"
+  #   Schema       = "Pre-defined-with-Insurance-KPIs"
+  #   LastModified = timestamp()
+  # }
+}
+
+# ============================================================================
+# 7. AWS GLUE CRAWLER - GOLD CAR CURRENT STATE
 # ============================================================================
 
 resource "aws_glue_crawler" "gold_car_current_state" {
   name          = "${var.project_name}-gold-car-current-state-crawler-${var.environment}"
   database_name = aws_glue_catalog_database.data_lake_database.name
   role          = aws_iam_role.gold_crawler_role.arn
-  description   = "Crawler for Gold layer - Car Current State table"
+  description   = "Crawler for Gold layer - Car Current State table with Insurance KPIs"
 
   # Não definir schedule - será acionado pelo workflow
   # schedule = ""
@@ -370,6 +599,7 @@ resource "aws_glue_crawler" "gold_car_current_state" {
   }
 
   depends_on = [
+    aws_glue_catalog_table.gold_car_current_state,
     aws_iam_role_policy.gold_crawler_s3,
     aws_iam_role_policy.gold_crawler_catalog,
     aws_iam_role_policy.gold_crawler_cloudwatch
@@ -377,7 +607,7 @@ resource "aws_glue_crawler" "gold_car_current_state" {
 }
 
 # ============================================================================
-# 7. AWS GLUE WORKFLOW - GOLD LAYER ORCHESTRATION
+# 8. AWS GLUE WORKFLOW - GOLD LAYER ORCHESTRATION
 # ============================================================================
 
 resource "aws_glue_workflow" "gold_etl_workflow" {
@@ -394,7 +624,7 @@ resource "aws_glue_workflow" "gold_etl_workflow" {
 }
 
 # ============================================================================
-# 8. TRIGGERS MOVIDOS PARA glue_workflow.tf
+# 9. TRIGGERS MOVIDOS PARA glue_workflow.tf
 # ============================================================================
 # NOTA: Os triggers abaixo foram movidos para glue_workflow.tf para consolidar
 # toda a orquestração (Silver + Gold) em um único Workflow.
@@ -407,6 +637,7 @@ resource "aws_glue_workflow" "gold_etl_workflow" {
 # - Visualização unificada no console AWS Glue
 # - Monitoramento centralizado de toda a pipeline
 # - Triggers condicionais mais confiáveis dentro do workflow
+# - Schema pré-definido incluindo KPIs de Seguro
 # ============================================================================
 
 /*

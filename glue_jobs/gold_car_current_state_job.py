@@ -31,6 +31,7 @@ from awsglue.job import Job
 
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+from pyspark.sql.functions import col, to_date, current_date, datediff, when, lit
 from datetime import datetime
 
 # ============================================================================
@@ -155,15 +156,82 @@ else:
     print(f"      - Taxa de redução: {(vehicles_deduped / total_records * 100):.1f}%")
 
     # ============================================================================
-    # 4. ENRIQUECIMENTO ADICIONAL (OPCIONAL)
+    # 4. ENRIQUECIMENTO: KPIs DE SEGURO
     # ============================================================================
 
     print("\n" + "=" * 80)
-    print("🔧 ETAPA 3: Enriquecimento adicional da Camada Gold")
+    print("🛡️  ETAPA 3: Enriquecimento com KPIs de Seguro")
+    print("=" * 80)
+
+    print("\n   🎯 KPIs de Seguro a serem calculados:")
+    print("      1. insurance_status (String): VENCIDO | VENCENDO_EM_90_DIAS | ATIVO")
+    print("      2. insurance_days_expired (Int): Dias desde vencimento (null se ativo)")
+    print("\n   📊 Lógica de Negócio:")
+    print("      - Fonte: carInsurance_validUntil (campo achatado do Silver)")
+    print("      - Referência: current_date() no momento da execução")
+    print("      - VENCIDO: validUntil < current_date")
+    print("      - VENCENDO_EM_90_DIAS: 0 <= days_remaining <= 90")
+    print("      - ATIVO: days_remaining > 90")
+
+    print("\n   🔹 Aplicando transformações de data...")
+
+    # Definir colunas de data
+    current_date_col = current_date()
+    # Campo achatado do Silver: carInsurance_validUntil (formato: "2026-10-29")
+    valid_until_date_col = to_date(col("carInsurance_validUntil"), "yyyy-MM-dd")
+
+    # Calcular diferença em dias
+    # datediff(end_date, start_date) -> Positivo se end_date > start_date
+    # Neste caso: datediff(validUntil, current_date)
+    # - Positivo = dias restantes até vencer
+    # - Negativo = dias vencidos
+    days_diff_col = datediff(valid_until_date_col, current_date_col)
+
+    print("      ✅ Colunas de data configuradas")
+    print("         - current_date: Data de execução do job")
+    print("         - valid_until: carInsurance_validUntil convertido para date")
+    print("         - days_diff: Diferença em dias (positivo = restantes, negativo = vencidos)")
+
+    # Enriquecer DataFrame com KPIs de seguro
+    df_enriched = df_current_state.withColumn(
+        "insurance_status",
+        when(days_diff_col < 0, "VENCIDO")
+        .when((days_diff_col >= 0) & (days_diff_col <= 90), "VENCENDO_EM_90_DIAS")
+        .otherwise("ATIVO")
+    ).withColumn(
+        "insurance_days_expired",
+        when(days_diff_col < 0, -days_diff_col)  # Converte negativo em dias vencidos
+        .otherwise(lit(None).cast("int"))         # Null se não estiver vencido
+    )
+
+    print("      ✅ KPIs de seguro adicionados")
+
+    # Estatísticas dos status de seguro
+    print("\n   📊 Distribuição de Status de Seguro:")
+    insurance_stats = df_enriched.groupBy("insurance_status").count().orderBy(F.col("count").desc())
+    insurance_stats.show(10, truncate=False)
+
+    # Mostrar amostra com os novos campos
+    print("\n   📋 Amostra de dados com KPIs de Seguro:")
+    df_enriched.select(
+        "carChassis",
+        "Manufacturer",
+        "Model",
+        "carInsurance_validUntil",
+        "insurance_status",
+        "insurance_days_expired"
+    ).orderBy(F.col("currentMileage").desc()).show(5, truncate=False)
+
+    # ============================================================================
+    # 5. ENRIQUECIMENTO ADICIONAL (METADADOS GOLD)
+    # ============================================================================
+
+    print("\n" + "=" * 80)
+    print("🔧 ETAPA 4: Enriquecimento adicional da Camada Gold")
     print("=" * 80)
 
     # Adicionar timestamp de processamento (metadado Gold)
-    df_gold = df_current_state.withColumn(
+    df_gold = df_enriched.withColumn(
         "gold_processing_timestamp",
         F.current_timestamp()
     ).withColumn(
@@ -195,11 +263,11 @@ else:
     ).orderBy(F.col("currentMileage").desc()).show(5, truncate=False)
 
     # ============================================================================
-    # 5. ESCRITA NO GOLD BUCKET (OVERWRITE COMPLETO)
+    # 6. ESCRITA NO GOLD BUCKET (OVERWRITE COMPLETO)
     # ============================================================================
 
     print("\n" + "=" * 80)
-    print("💾 ETAPA 4: Escrevendo dados no Gold Bucket")
+    print("💾 ETAPA 5: Escrevendo dados no Gold Bucket")
     print("=" * 80)
 
     gold_output_path = f"s3://{args['gold_bucket']}/{args['gold_path']}"
@@ -241,7 +309,7 @@ else:
         print(f"      ⚠️  Não foi possível listar arquivos: {e}")
 
     # ============================================================================
-    # 6. FINALIZAÇÃO DO JOB
+    # 7. FINALIZAÇÃO DO JOB
     # ============================================================================
 
     print("\n" + "=" * 80)
@@ -252,14 +320,23 @@ else:
     print(f"   - Registros lidos (Silver): {total_records}")
     print(f"   - Veículos únicos (Gold): {current_state_count}")
     print(f"   - Redução de dados: {(vehicles_deduped / total_records * 100):.1f}%")
+    print(f"   - KPIs adicionados: insurance_status, insurance_days_expired")
     print(f"   - Output Path: {gold_output_path}")
     print(f"   - Snapshot Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    print("\n📊 Distribuição Final de Status de Seguro:")
+    final_insurance_stats = df_gold.groupBy("insurance_status").count().collect()
+    for row in final_insurance_stats:
+        print(f"   - {row['insurance_status']}: {row['count']} veículos")
     
     print("\n" + "=" * 80)
     print("🎯 Próximos Passos:")
     print("   1. Workflow irá acionar Gold Crawler automaticamente")
     print("   2. Crawler atualizará tabela 'gold_car_current_state' no catálogo")
     print("   3. Dados estarão disponíveis para consulta no Athena")
+    print("   4. Novas colunas disponíveis:")
+    print("      - insurance_status: Status do seguro do veículo")
+    print("      - insurance_days_expired: Dias vencidos (se aplicável)")
     print("=" * 80)
 
     # Commit do Job
