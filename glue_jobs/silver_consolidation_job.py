@@ -1,26 +1,26 @@
 """
-AWS Glue ETL Job - Silver Layer Consolidation (REFATORADO)
-===========================================================
+AWS Glue ETL Job - Silver Layer Consolidation (COMPATÍVEL)
+==========================================================
 
 Objetivo:
-- Ler dados novos do Bronze (Parquet com múltiplas estruturas aninhadas)
-- Aplicar achatamento (flatten) de structs complexos
+- Ler dados novos do Bronze (Parquet com estrutura atual)
+- Aplicar achatamento (flatten) de structs existentes
 - Consolidar estado atual por veículo (current state)
 - Enriquecer com KPIs de seguro
 - Escrever apenas partições afetadas (Dynamic Partition Overwrite)
 
-Nova Estrutura Bronze:
-- Múltiplos timestamps de extração
-- Estruturas aninhadas (vehicle_static_info, vehicle_dynamic_state, trip_data)
-- Dados distribuídos em data.* de cada struct
+Estrutura Bronze Atual:
+- Campos principais: carChassis, Model, year, etc.
+- Estruturas aninhadas: metrics, carInsurance, market
+- Campos de telemetria em metrics.* e metrics.trip.*
 
 Lógica de Consolidação:
 - Chave de negócio: carChassis 
-- Regra de precedência: current_mileage DESC (estado mais atual)
+- Regra de precedência: currentMileage DESC (estado mais atual)
 - Resultado: 1 registro único por carChassis (estado atual)
 
 Autor: Sistema de Data Lakehouse
-Data: 2025-11-04 (Refatoração)
+Data: 2025-11-04 (Compatibilidade Bronze Atual)
 """
 
 import sys
@@ -71,10 +71,10 @@ print(f"📅 Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
-# 2. LEITURA DOS DADOS NOVOS DO BRONZE (ESTRUTURA ANINHADA)
+# 2. LEITURA DOS DADOS NOVOS DO BRONZE (ESTRUTURA ATUAL)
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura de dados novos do Bronze (Estrutura Aninhada)...")
+print("\n📥 ETAPA 1: Leitura de dados novos do Bronze (Estrutura Atual)...")
 print(f"   Database: {args['bronze_database']}")
 print(f"   Table: {args['bronze_table']}")
 
@@ -87,89 +87,80 @@ bronze_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
 )
 
 # Converter para Spark DataFrame
-df_bronze_nested = bronze_dynamic_frame.toDF()
+df_bronze_current = bronze_dynamic_frame.toDF()
 
 # Contar registros novos
-new_records_count = df_bronze_nested.count()
+new_records_count = df_bronze_current.count()
 print(f"   ✅ Registros novos encontrados: {new_records_count}")
 
-# Mostrar schema do Bronze (aninhado complexo)
-print("\n   📊 Schema Bronze (com múltiplos structs aninhados):")
-df_bronze_nested.printSchema()
+# Mostrar schema do Bronze (estrutura atual)
+print("\n   📊 Schema Bronze (estrutura atual):")
+df_bronze_current.printSchema()
 
 if new_records_count == 0:
     print("   ℹ️  Nenhum registro novo para processar. Job continuará para manter bookmarks atualizados.")
 else:
-    print(f"   🔍 Exemplo de dados Bronze aninhados:")
-    df_bronze_nested.select("event_id", "carChassis", "event_primary_timestamp").show(2, truncate=False)
+    print(f"   🔍 Exemplo de dados Bronze:")
+    df_bronze_current.select("carChassis", "Model", "currentMileage").show(2, truncate=False)
 
 # ============================================================================
-# 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA ANINHADA COMPLEXA
+# 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA ATUAL
 # ============================================================================
 
-print("\n🔄 ETAPA 2: Achatamento de estruturas aninhadas complexas...")
+print("\n🔄 ETAPA 2: Achatamento de estruturas aninhadas (estrutura atual)...")
 
 if new_records_count > 0:
     
     # ----------------------------------------------------------------------------
-    # 3.1 ACHATAMENTO PRINCIPAL - Extrair dados dos structs aninhados
+    # 3.1 ACHATAMENTO PRINCIPAL - Extrair dados dos structs existentes
     # ----------------------------------------------------------------------------
     
-    print("   🔹 1/4: Achatando múltiplos structs aninhados...")
+    print("   🔹 1/4: Achatando structs da estrutura atual...")
     
-    # Achatamento completo: extrair campos 'data' de cada struct
-    df_flattened = df_bronze_nested.select(
-        # Campos principais do evento
-        F.col("event_id"),
+    # Achatar struct 'metrics'
+    df_flattened = df_bronze_current.select(
+        # Campos principais 
         F.col("carChassis"),
-        F.to_timestamp(F.col("event_primary_timestamp")).alias("event_timestamp"),
-        F.col("processing_timestamp"),
+        F.col("Model"),
+        F.col("year"),
+        F.col("ModelYear"),
+        F.col("Manufacturer"),
+        F.col("horsePower"),
+        F.col("gasType"),
+        F.col("currentMileage"),
+        F.col("color"),
+        F.col("fuelCapacityLiters"),
         
-        # Vehicle Static Info - achatar data.*
-        F.col("vehicle_static_info.data.Model").alias("vehicle_model"),
-        F.col("vehicle_static_info.data.year").alias("vehicle_year"),
-        F.col("vehicle_static_info.data.ModelYear").alias("vehicle_model_year"),
-        F.col("vehicle_static_info.data.Manufacturer").alias("vehicle_manufacturer"),
-        F.col("vehicle_static_info.data.gasType").alias("vehicle_gas_type"),
-        F.col("vehicle_static_info.data.fuelCapacityLiters").alias("vehicle_fuel_capacity_liters"),
-        F.col("vehicle_static_info.data.color").alias("vehicle_color"),
+        # Achatar struct 'metrics'
+        F.col("metrics.engineTempCelsius").alias("metrics_engineTempCelsius"),
+        F.col("metrics.oilTempCelsius").alias("metrics_oilTempCelsius"),
+        F.col("metrics.batteryChargePerc").alias("metrics_batteryChargePerc"),
+        F.col("metrics.fuelAvailableLiters").alias("metrics_fuelAvailableLiters"),
+        F.col("metrics.coolantCelsius").alias("metrics_coolantCelsius"),
+        F.col("metrics.metricTimestamp").alias("metrics_metricTimestamp"),
         
-        # Vehicle Dynamic State - Insurance Info
-        F.col("vehicle_dynamic_state.insurance_info.data.provider").alias("insurance_provider"),
-        F.col("vehicle_dynamic_state.insurance_info.data.policy_number").alias("insurance_policy_number"),
-        F.to_date(F.col("vehicle_dynamic_state.insurance_info.data.validUntil"), "yyyy-MM-dd").alias("insurance_valid_until"),
+        # Achatar struct aninhado 'metrics.trip'
+        F.col("metrics.trip.tripMileage").alias("metrics_trip_tripMileage"),
+        F.col("metrics.trip.tripTimeMinutes").alias("metrics_trip_tripTimeMinutes"),
+        F.col("metrics.trip.tripFuelLiters").alias("metrics_trip_tripFuelLiters"),
+        F.col("metrics.trip.tripMaxSpeedKm").alias("metrics_trip_tripMaxSpeedKm"),
+        F.col("metrics.trip.tripAverageSpeedKm").alias("metrics_trip_tripAverageSpeedKm"),
+        F.col("metrics.trip.tripStartTimestamp").alias("metrics_trip_tripStartTimestamp"),
         
-        # Vehicle Dynamic State - Maintenance Info
-        F.to_date(F.col("vehicle_dynamic_state.maintenance_info.data.last_service_date"), "yyyy-MM-dd").alias("maintenance_last_service_date"),
-        F.col("vehicle_dynamic_state.maintenance_info.data.last_service_mileage").alias("maintenance_last_service_mileage"),
-        F.col("vehicle_dynamic_state.maintenance_info.data.oil_life_percentage").alias("maintenance_oil_life_percentage"),
+        # Achatar struct 'carInsurance'
+        F.col("carInsurance.number").alias("carInsurance_number"),
+        F.col("carInsurance.provider").alias("carInsurance_provider"),
+        F.col("carInsurance.validUntil").alias("carInsurance_validUntil"),
         
-        # Current Rental Agreement
-        F.col("current_rental_agreement.data.agreement_id").alias("rental_agreement_id"),
-        F.col("current_rental_agreement.data.customer_id").alias("rental_customer_id"),
-        F.to_timestamp(F.col("current_rental_agreement.data.rental_start_date")).alias("rental_start_date"),
-        
-        # Trip Data - Trip Summary
-        F.to_timestamp(F.col("trip_data.trip_summary.data.tripStartTimestamp")).alias("trip_start_timestamp"),
-        F.to_timestamp(F.col("trip_data.trip_summary.data.tripEndTimestamp")).alias("trip_end_timestamp"),
-        F.col("trip_data.trip_summary.data.tripMileage").alias("trip_mileage"),
-        F.col("trip_data.trip_summary.data.tripTimeMinutes").alias("trip_time_minutes"),
-        F.col("trip_data.trip_summary.data.tripFuelLiters").alias("trip_fuel_liters"),
-        F.col("trip_data.trip_summary.data.tripMaxSpeedKm").alias("trip_max_speed_km"),
-        
-        # Trip Data - Vehicle Telemetry Snapshot
-        F.col("trip_data.vehicle_telemetry_snapshot.data.currentMileage").alias("current_mileage"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.fuelAvailableLiters").alias("fuel_available_liters"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.engineTempCelsius").alias("engine_temp_celsius"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.oilTempCelsius").alias("oil_temp_celsius"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.batteryChargePerc").alias("battery_charge_percentage"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.front_left").alias("tire_pressure_front_left"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.front_right").alias("tire_pressure_front_right"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.rear_left").alias("tire_pressure_rear_left"),
-        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.rear_right").alias("tire_pressure_rear_right"),
+        # Achatar struct 'market'
+        F.col("market.currentPrice").alias("market_currentPrice"),
+        F.col("market.currency").alias("market_currency"),
+        F.col("market.location").alias("market_location"),
+        F.col("market.dealer").alias("market_dealer"),
+        F.col("market.warrantyYears").alias("market_warrantyYears"),
+        F.col("market.evaluator").alias("market_evaluator"),
         
         # Partições originais (mantemos para compatibilidade)
-        F.col("ingest_year"),
         F.col("ingest_month"),
         F.col("ingest_day")
     )
@@ -183,53 +174,59 @@ if new_records_count > 0:
     print("   🔹 2/4: Aplicando limpeza e padronização...")
     
     df_clean = df_flattened.withColumn(
-        "vehicle_manufacturer",
-        F.initcap(F.col("vehicle_manufacturer"))  # Title Case
+        "Manufacturer",
+        F.initcap(F.col("Manufacturer"))  # Title Case
     ).withColumn(
-        "vehicle_color",
-        F.lower(F.col("vehicle_color"))  # lowercase
+        "color",
+        F.lower(F.col("color"))  # lowercase
     ).withColumn(
-        "insurance_provider",
-        F.initcap(F.col("insurance_provider"))  # Title Case
+        "carInsurance_provider",
+        F.initcap(F.col("carInsurance_provider"))  # Title Case
     )
     
-    print("      ✅ Padronização aplicada: manufacturer/provider → Title Case, color → lowercase")
+    print("      ✅ Padronização aplicada: Manufacturer/provider → Title Case, color → lowercase")
     
     # ----------------------------------------------------------------------------
-    # 3.3 ENRIQUECIMENTO - KPIs Calculados
+    # 3.3 CONVERSÃO DE TIPOS E TIMESTAMPS
     # ----------------------------------------------------------------------------
     
-    print("   🔹 3/4: Calculando KPIs enriquecidos...")
+    print("   🔹 3/4: Convertendo tipos e timestamps...")
     
-    df_enriched = df_clean.withColumn(
-        "fuel_level_percentage",
-        F.round((F.col("fuel_available_liters") / F.col("vehicle_fuel_capacity_liters")) * 100, 2)
+    # Converter timestamp strings para timestamp
+    df_typed = df_clean.withColumn(
+        "metrics_metricTimestamp",
+        F.to_timestamp(F.col("metrics_metricTimestamp"), "EEE, dd MMM yyyy HH:mm:ss")
     ).withColumn(
-        "trip_avg_speed_km",
-        F.when(
-            F.col("trip_time_minutes") > 0,
-            F.round((F.col("trip_mileage") / F.col("trip_time_minutes")) * 60, 2)
-        ).otherwise(0.0)
+        "metrics_trip_tripStartTimestamp",
+        F.to_timestamp(F.col("metrics_trip_tripStartTimestamp"), "EEE, dd MMM yyyy HH:mm:ss")
     ).withColumn(
-        "trip_fuel_efficiency_km_per_liter",
+        "carInsurance_validUntil",
+        F.to_date(F.col("carInsurance_validUntil"), "yyyy-MM-dd")
+    )
+    
+    print("      ✅ Timestamps e datas convertidos")
+    
+    # ----------------------------------------------------------------------------
+    # 3.4 ENRIQUECIMENTO - KPIs Calculados
+    # ----------------------------------------------------------------------------
+    
+    print("   🔹 4/4: Calculando KPIs enriquecidos...")
+    
+    df_enriched = df_typed.withColumn(
+        "metrics_fuel_level_percentage",
+        F.round((F.col("metrics_fuelAvailableLiters") / F.col("fuelCapacityLiters")) * 100, 2)
+    ).withColumn(
+        "metrics_trip_km_per_liter",
         F.when(
-            F.col("trip_fuel_liters") > 0,
-            F.round(F.col("trip_mileage") / F.col("trip_fuel_liters"), 2)
+            F.col("metrics_trip_tripFuelLiters") > 0,
+            F.round(F.col("metrics_trip_tripMileage") / F.col("metrics_trip_tripFuelLiters"), 2)
         ).otherwise(0.0)
     )
     
-    print("      ✅ KPIs calculados: fuel_level_percentage, trip_avg_speed_km, fuel_efficiency")
-    
-    # ----------------------------------------------------------------------------
-    # 3.4 KPIs DE SEGURO (INSURANCE KPIs) - MANTIDOS DA VERSÃO ANTERIOR
-    # ----------------------------------------------------------------------------
-    
-    print("   🔹 4/4: Calculando KPIs de Seguro...")
-    
-    # Calcular dias até vencimento do seguro
+    # KPIs DE SEGURO (INSURANCE KPIs) - MANTIDOS E ADAPTADOS
     df_with_insurance_kpis = df_enriched.withColumn(
         "insurance_days_to_expiry",
-        F.datediff(F.col("insurance_valid_until"), F.current_date())
+        F.datediff(F.col("carInsurance_validUntil"), F.current_date())
     ).withColumn(
         "insurance_status",
         F.when(F.col("insurance_days_to_expiry") < 0, "VENCIDO")
@@ -241,18 +238,18 @@ if new_records_count > 0:
          .otherwise(0)
     )
     
-    print("      ✅ Insurance KPIs calculados: insurance_status, insurance_days_expired")
+    print("      ✅ KPIs calculados: fuel_level_percentage, km_per_liter, insurance_status, insurance_days_expired")
     
     # Criar colunas de partição por data do evento
     df_silver_transformed = df_with_insurance_kpis.withColumn(
         "event_year",
-        F.year(F.col("event_timestamp")).cast("string")
+        F.year(F.col("metrics_metricTimestamp")).cast("string")
     ).withColumn(
         "event_month",
-        F.lpad(F.month(F.col("event_timestamp")).cast("string"), 2, "0")
+        F.lpad(F.month(F.col("metrics_metricTimestamp")).cast("string"), 2, "0")
     ).withColumn(
         "event_day",
-        F.lpad(F.dayofmonth(F.col("event_timestamp")).cast("string"), 2, "0")
+        F.lpad(F.dayofmonth(F.col("metrics_metricTimestamp")).cast("string"), 2, "0")
     )
     
     print(f"   ✅ Transformação completa! {df_silver_transformed.count()} registros transformados")
@@ -304,11 +301,11 @@ if new_records_count > 0:
     print("   🎯 3/3: Aplicando consolidação de estado atual por quilometragem...")
     
     # Determinar o registro com maior quilometragem para cada carChassis
-    # current_mileage como critério principal + event_timestamp como desempate
+    # currentMileage como critério principal + metrics_metricTimestamp como desempate
     
     window_spec = Window.partitionBy("carChassis").orderBy(
-        F.col("current_mileage").desc(),
-        F.col("event_timestamp").desc()
+        F.col("currentMileage").desc(),
+        F.col("metrics_metricTimestamp").desc()
     )
     
     df_current_state = df_union.withColumn(
@@ -330,10 +327,10 @@ if new_records_count > 0:
     print("\n   📋 Exemplo de registros consolidados:")
     df_current_state.select(
         "carChassis",
-        "current_mileage",
-        "event_timestamp",
-        "vehicle_manufacturer",
-        "vehicle_model",
+        "currentMileage",
+        "metrics_metricTimestamp",
+        "Manufacturer",
+        "Model",
         "insurance_status",
         "insurance_days_expired"
     ).show(5, truncate=False)
