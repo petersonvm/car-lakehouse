@@ -1,20 +1,26 @@
 """
-AWS Glue ETL Job - Silver Layer Consolidation with Upsert
-==========================================================
+AWS Glue ETL Job - Silver Layer Consolidation (REFATORADO)
+===========================================================
 
 Objetivo:
-- Ler dados novos do Bronze (Parquet com structs)
-- Aplicar transformações (flatten, cleanse, enrich)
-- Consolidar com dados existentes no Silver (Upsert/Deduplicação)
+- Ler dados novos do Bronze (Parquet com múltiplas estruturas aninhadas)
+- Aplicar achatamento (flatten) de structs complexos
+- Consolidar estado atual por veículo (current state)
+- Enriquecer com KPIs de seguro
 - Escrever apenas partições afetadas (Dynamic Partition Overwrite)
 
-Lógica de Deduplicação:
-- Chave de negócio: carChassis + event_year + event_month + event_day
-- Regra de precedência: currentMileage DESC (o registro mais recente)
-- Resultado: 1 registro único por combinação de chave
+Nova Estrutura Bronze:
+- Múltiplos timestamps de extração
+- Estruturas aninhadas (vehicle_static_info, vehicle_dynamic_state, trip_data)
+- Dados distribuídos em data.* de cada struct
+
+Lógica de Consolidação:
+- Chave de negócio: carChassis 
+- Regra de precedência: current_mileage DESC (estado mais atual)
+- Resultado: 1 registro único por carChassis (estado atual)
 
 Autor: Sistema de Data Lakehouse
-Data: 2025-10-30
+Data: 2025-11-04 (Refatoração)
 """
 
 import sys
@@ -65,10 +71,10 @@ print(f"📅 Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
-# 2. LEITURA DOS DADOS NOVOS DO BRONZE (COM BOOKMARKS)
+# 2. LEITURA DOS DADOS NOVOS DO BRONZE (ESTRUTURA ANINHADA)
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura de dados novos do Bronze...")
+print("\n📥 ETAPA 1: Leitura de dados novos do Bronze (Estrutura Aninhada)...")
 print(f"   Database: {args['bronze_database']}")
 print(f"   Table: {args['bronze_table']}")
 
@@ -78,275 +84,316 @@ bronze_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
     database=args['bronze_database'],
     table_name=args['bronze_table'],
     transformation_ctx="bronze_source"  # Bookmark tracking
-    # Nota: push_down_predicate removido pois ingest_year não está nas partition keys
 )
 
 # Converter para Spark DataFrame
-df_bronze_new = bronze_dynamic_frame.toDF()
+df_bronze_nested = bronze_dynamic_frame.toDF()
 
 # Contar registros novos
-new_records_count = df_bronze_new.count()
+new_records_count = df_bronze_nested.count()
 print(f"   ✅ Registros novos encontrados: {new_records_count}")
 
-# Mostrar schema do Bronze (aninhado)
-print("\n   📊 Schema Bronze (com structs):")
-df_bronze_new.printSchema()
+# Mostrar schema do Bronze (aninhado complexo)
+print("\n   📊 Schema Bronze (com múltiplos structs aninhados):")
+df_bronze_nested.printSchema()
 
-# Note: Continuamos o processamento mesmo com 0 registros novos
-# Isso permite que o Glue Job seja marcado como SUCCEEDED
-# e o Workflow possa prosseguir com o Crawler
-
-# ============================================================================
-# 3. TRANSFORMAÇÕES SILVER
-# ============================================================================
-
-print("\n🔄 ETAPA 2: Aplicando transformações Silver...")
-
-# ----------------------------------------------------------------------------
-# 3.1 ACHATAMENTO (Flattening) - Desnormalizar structs
-# ----------------------------------------------------------------------------
-
-print("   🔹 1/5: Achatando estruturas aninhadas (structs)...")
-
-# Achatar struct 'metrics'
-df_flattened = df_bronze_new.select(
-    "*",
-    F.col("metrics.engineTempCelsius").alias("metrics_engineTempCelsius"),
-    F.col("metrics.oilTempCelsius").alias("metrics_oilTempCelsius"),
-    F.col("metrics.batteryChargePerc").alias("metrics_batteryChargePerc"),
-    F.col("metrics.fuelAvailableLiters").alias("metrics_fuelAvailableLiters"),
-    F.col("metrics.coolantCelsius").alias("metrics_coolantCelsius"),
-    F.col("metrics.metricTimestamp").alias("metrics_metricTimestamp"),
-    # Achatar struct aninhado 'metrics.trip'
-    F.col("metrics.trip.tripMileage").alias("metrics_trip_tripMileage"),
-    F.col("metrics.trip.tripTimeMinutes").alias("metrics_trip_tripTimeMinutes"),
-    F.col("metrics.trip.tripFuelLiters").alias("metrics_trip_tripFuelLiters"),
-    F.col("metrics.trip.tripMaxSpeedKm").alias("metrics_trip_tripMaxSpeedKm"),
-    F.col("metrics.trip.tripAverageSpeedKm").alias("metrics_trip_tripAverageSpeedKm"),
-    F.col("metrics.trip.tripStartTimestamp").alias("metrics_trip_tripStartTimestamp")
-).drop("metrics")  # Remover struct original
-
-# Achatar struct 'carInsurance'
-df_flattened = df_flattened.select(
-    "*",
-    F.col("carInsurance.number").alias("carInsurance_number"),
-    F.col("carInsurance.provider").alias("carInsurance_provider"),
-    F.col("carInsurance.validUntil").alias("carInsurance_validUntil")
-).drop("carInsurance")
-
-# Achatar struct 'market'
-df_flattened = df_flattened.select(
-    "*",
-    F.col("market.currentPrice").alias("market_currentPrice"),
-    F.col("market.currency").alias("market_currency"),
-    F.col("market.location").alias("market_location"),
-    F.col("market.dealer").alias("market_dealer"),
-    F.col("market.warrantyYears").alias("market_warrantyYears"),
-    F.col("market.evaluator").alias("market_evaluator")
-).drop("market")
-
-print(f"      ✅ {len(df_flattened.columns)} colunas após achatamento")
-
-# ----------------------------------------------------------------------------
-# 3.2 LIMPEZA (Cleansing) - Padronização
-# ----------------------------------------------------------------------------
-
-print("   🔹 2/5: Aplicando limpeza e padronização...")
-
-df_clean = df_flattened.withColumn(
-    "Manufacturer",
-    F.initcap(F.col("Manufacturer"))  # Title Case
-).withColumn(
-    "color",
-    F.lower(F.col("color"))  # lowercase
-)
-
-print("      ✅ Manufacturer → Title Case, color → lowercase")
-
-# ----------------------------------------------------------------------------
-# 3.3 CONVERSÃO DE TIPOS
-# ----------------------------------------------------------------------------
-
-print("   🔹 3/5: Convertendo tipos de dados...")
-
-# Converter timestamp strings para timestamp
-df_typed = df_clean.withColumn(
-    "metrics_metricTimestamp",
-    F.to_timestamp(F.col("metrics_metricTimestamp"), "EEE, dd MMM yyyy HH:mm:ss")
-).withColumn(
-    "metrics_trip_tripStartTimestamp",
-    F.to_timestamp(F.col("metrics_trip_tripStartTimestamp"), "EEE, dd MMM yyyy HH:mm:ss")
-).withColumn(
-    "carInsurance_validUntil",
-    F.to_date(F.col("carInsurance_validUntil"), "yyyy-MM-dd")
-)
-
-print("      ✅ Timestamps e datas convertidos")
-
-# ----------------------------------------------------------------------------
-# 3.4 ENRIQUECIMENTO (Enrichment) - Métricas calculadas
-# ----------------------------------------------------------------------------
-
-print("   🔹 4/5: Calculando métricas enriquecidas...")
-
-df_enriched = df_typed.withColumn(
-    "metrics_fuel_level_percentage",
-    F.round((F.col("metrics_fuelAvailableLiters") / F.col("fuelCapacityLiters")) * 100, 2)
-).withColumn(
-    "metrics_trip_km_per_liter",
-    F.when(
-        F.col("metrics_trip_tripFuelLiters") > 0,
-        F.round(F.col("metrics_trip_tripMileage") / F.col("metrics_trip_tripFuelLiters"), 2)
-    ).otherwise(0.0)
-)
-
-print("      ✅ Métricas calculadas: fuel_level_percentage, km_per_liter")
-
-# ----------------------------------------------------------------------------
-# 3.5 PARTICIONAMENTO (Event-based partitions)
-# ----------------------------------------------------------------------------
-
-print("   🔹 5/5: Criando colunas de partição por data do evento...")
-
-df_partitioned = df_enriched.withColumn(
-    "event_year",
-    F.year(F.col("metrics_metricTimestamp")).cast("string")
-).withColumn(
-    "event_month",
-    F.lpad(F.month(F.col("metrics_metricTimestamp")).cast("string"), 2, "0")
-).withColumn(
-    "event_day",
-    F.lpad(F.dayofmonth(F.col("metrics_metricTimestamp")).cast("string"), 2, "0")
-)
-
-# Remover colunas de metadados da ingestão (não necessárias no Silver)
-df_silver_new = df_partitioned.drop("ingestion_timestamp", "source_file", "source_bucket")
-
-print("      ✅ Partições criadas: event_year, event_month, event_day")
-print(f"   ✅ Transformação completa! {df_silver_new.count()} registros prontos")
+if new_records_count == 0:
+    print("   ℹ️  Nenhum registro novo para processar. Job continuará para manter bookmarks atualizados.")
+else:
+    print(f"   🔍 Exemplo de dados Bronze aninhados:")
+    df_bronze_nested.select("event_id", "carChassis", "event_primary_timestamp").show(2, truncate=False)
 
 # ============================================================================
-# 4. CARREGAR DADOS EXISTENTES DO SILVER (PARA CONSOLIDAÇÃO)
+# 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA ANINHADA COMPLEXA
 # ============================================================================
 
-print("\n📚 ETAPA 3: Carregando dados existentes do Silver...")
-print(f"   Database: {args['silver_database']}")
-print(f"   Table: {args['silver_table']}")
+print("\n🔄 ETAPA 2: Achatamento de estruturas aninhadas complexas...")
 
-try:
-    # Tentar ler tabela Silver existente
-    silver_existing_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
-        database=args['silver_database'],
-        table_name=args['silver_table'],
-        transformation_ctx="silver_existing"
+if new_records_count > 0:
+    
+    # ----------------------------------------------------------------------------
+    # 3.1 ACHATAMENTO PRINCIPAL - Extrair dados dos structs aninhados
+    # ----------------------------------------------------------------------------
+    
+    print("   🔹 1/4: Achatando múltiplos structs aninhados...")
+    
+    # Achatamento completo: extrair campos 'data' de cada struct
+    df_flattened = df_bronze_nested.select(
+        # Campos principais do evento
+        F.col("event_id"),
+        F.col("carChassis"),
+        F.to_timestamp(F.col("event_primary_timestamp")).alias("event_timestamp"),
+        F.col("processing_timestamp"),
+        
+        # Vehicle Static Info - achatar data.*
+        F.col("vehicle_static_info.data.Model").alias("vehicle_model"),
+        F.col("vehicle_static_info.data.year").alias("vehicle_year"),
+        F.col("vehicle_static_info.data.ModelYear").alias("vehicle_model_year"),
+        F.col("vehicle_static_info.data.Manufacturer").alias("vehicle_manufacturer"),
+        F.col("vehicle_static_info.data.gasType").alias("vehicle_gas_type"),
+        F.col("vehicle_static_info.data.fuelCapacityLiters").alias("vehicle_fuel_capacity_liters"),
+        F.col("vehicle_static_info.data.color").alias("vehicle_color"),
+        
+        # Vehicle Dynamic State - Insurance Info
+        F.col("vehicle_dynamic_state.insurance_info.data.provider").alias("insurance_provider"),
+        F.col("vehicle_dynamic_state.insurance_info.data.policy_number").alias("insurance_policy_number"),
+        F.to_date(F.col("vehicle_dynamic_state.insurance_info.data.validUntil"), "yyyy-MM-dd").alias("insurance_valid_until"),
+        
+        # Vehicle Dynamic State - Maintenance Info
+        F.to_date(F.col("vehicle_dynamic_state.maintenance_info.data.last_service_date"), "yyyy-MM-dd").alias("maintenance_last_service_date"),
+        F.col("vehicle_dynamic_state.maintenance_info.data.last_service_mileage").alias("maintenance_last_service_mileage"),
+        F.col("vehicle_dynamic_state.maintenance_info.data.oil_life_percentage").alias("maintenance_oil_life_percentage"),
+        
+        # Current Rental Agreement
+        F.col("current_rental_agreement.data.agreement_id").alias("rental_agreement_id"),
+        F.col("current_rental_agreement.data.customer_id").alias("rental_customer_id"),
+        F.to_timestamp(F.col("current_rental_agreement.data.rental_start_date")).alias("rental_start_date"),
+        
+        # Trip Data - Trip Summary
+        F.to_timestamp(F.col("trip_data.trip_summary.data.tripStartTimestamp")).alias("trip_start_timestamp"),
+        F.to_timestamp(F.col("trip_data.trip_summary.data.tripEndTimestamp")).alias("trip_end_timestamp"),
+        F.col("trip_data.trip_summary.data.tripMileage").alias("trip_mileage"),
+        F.col("trip_data.trip_summary.data.tripTimeMinutes").alias("trip_time_minutes"),
+        F.col("trip_data.trip_summary.data.tripFuelLiters").alias("trip_fuel_liters"),
+        F.col("trip_data.trip_summary.data.tripMaxSpeedKm").alias("trip_max_speed_km"),
+        
+        # Trip Data - Vehicle Telemetry Snapshot
+        F.col("trip_data.vehicle_telemetry_snapshot.data.currentMileage").alias("current_mileage"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.fuelAvailableLiters").alias("fuel_available_liters"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.engineTempCelsius").alias("engine_temp_celsius"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.oilTempCelsius").alias("oil_temp_celsius"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.batteryChargePerc").alias("battery_charge_percentage"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.front_left").alias("tire_pressure_front_left"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.front_right").alias("tire_pressure_front_right"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.rear_left").alias("tire_pressure_rear_left"),
+        F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.rear_right").alias("tire_pressure_rear_right"),
+        
+        # Partições originais (mantemos para compatibilidade)
+        F.col("ingest_year"),
+        F.col("ingest_month"),
+        F.col("ingest_day")
     )
     
-    df_silver_existing = silver_existing_dynamic_frame.toDF()
-    existing_count = df_silver_existing.count()
-    print(f"   ✅ Registros existentes: {existing_count}")
+    print(f"      ✅ {len(df_flattened.columns)} colunas após achatamento")
     
-except Exception as e:
-    # Tabela não existe ainda (primeira execução)
-    print(f"   ℹ️  Tabela Silver não existe ou está vazia (primeira execução)")
-    df_silver_existing = spark.createDataFrame([], df_silver_new.schema)
-    existing_count = 0
+    # ----------------------------------------------------------------------------
+    # 3.2 LIMPEZA E PADRONIZAÇÃO
+    # ----------------------------------------------------------------------------
+    
+    print("   🔹 2/4: Aplicando limpeza e padronização...")
+    
+    df_clean = df_flattened.withColumn(
+        "vehicle_manufacturer",
+        F.initcap(F.col("vehicle_manufacturer"))  # Title Case
+    ).withColumn(
+        "vehicle_color",
+        F.lower(F.col("vehicle_color"))  # lowercase
+    ).withColumn(
+        "insurance_provider",
+        F.initcap(F.col("insurance_provider"))  # Title Case
+    )
+    
+    print("      ✅ Padronização aplicada: manufacturer/provider → Title Case, color → lowercase")
+    
+    # ----------------------------------------------------------------------------
+    # 3.3 ENRIQUECIMENTO - KPIs Calculados
+    # ----------------------------------------------------------------------------
+    
+    print("   🔹 3/4: Calculando KPIs enriquecidos...")
+    
+    df_enriched = df_clean.withColumn(
+        "fuel_level_percentage",
+        F.round((F.col("fuel_available_liters") / F.col("vehicle_fuel_capacity_liters")) * 100, 2)
+    ).withColumn(
+        "trip_avg_speed_km",
+        F.when(
+            F.col("trip_time_minutes") > 0,
+            F.round((F.col("trip_mileage") / F.col("trip_time_minutes")) * 60, 2)
+        ).otherwise(0.0)
+    ).withColumn(
+        "trip_fuel_efficiency_km_per_liter",
+        F.when(
+            F.col("trip_fuel_liters") > 0,
+            F.round(F.col("trip_mileage") / F.col("trip_fuel_liters"), 2)
+        ).otherwise(0.0)
+    )
+    
+    print("      ✅ KPIs calculados: fuel_level_percentage, trip_avg_speed_km, fuel_efficiency")
+    
+    # ----------------------------------------------------------------------------
+    # 3.4 KPIs DE SEGURO (INSURANCE KPIs) - MANTIDOS DA VERSÃO ANTERIOR
+    # ----------------------------------------------------------------------------
+    
+    print("   🔹 4/4: Calculando KPIs de Seguro...")
+    
+    # Calcular dias até vencimento do seguro
+    df_with_insurance_kpis = df_enriched.withColumn(
+        "insurance_days_to_expiry",
+        F.datediff(F.col("insurance_valid_until"), F.current_date())
+    ).withColumn(
+        "insurance_status",
+        F.when(F.col("insurance_days_to_expiry") < 0, "VENCIDO")
+         .when(F.col("insurance_days_to_expiry") <= 90, "VENCENDO_EM_90_DIAS")
+         .otherwise("ATIVO")
+    ).withColumn(
+        "insurance_days_expired",
+        F.when(F.col("insurance_days_to_expiry") < 0, F.abs(F.col("insurance_days_to_expiry")))
+         .otherwise(0)
+    )
+    
+    print("      ✅ Insurance KPIs calculados: insurance_status, insurance_days_expired")
+    
+    # Criar colunas de partição por data do evento
+    df_silver_transformed = df_with_insurance_kpis.withColumn(
+        "event_year",
+        F.year(F.col("event_timestamp")).cast("string")
+    ).withColumn(
+        "event_month",
+        F.lpad(F.month(F.col("event_timestamp")).cast("string"), 2, "0")
+    ).withColumn(
+        "event_day",
+        F.lpad(F.dayofmonth(F.col("event_timestamp")).cast("string"), 2, "0")
+    )
+    
+    print(f"   ✅ Transformação completa! {df_silver_transformed.count()} registros transformados")
+    
+else:
+    # Criar DataFrame vazio com schema esperado para casos sem dados novos
+    print("   ℹ️  Criando DataFrame vazio com schema esperado...")
+    df_silver_transformed = spark.createDataFrame([], schema=None)  # Schema será inferido na próxima execução
+
 
 # ============================================================================
-# 5. CONSOLIDAÇÃO (UPSERT) - LÓGICA DE DEDUPLICAÇÃO
+# 4. CONSOLIDAÇÃO - CURRENT STATE (Estado Atual por Quilometragem)
 # ============================================================================
 
-print("\n🔀 ETAPA 4: Consolidando dados (Upsert/Deduplicação)...")
-print(f"   Registros novos: {df_silver_new.count()}")
-print(f"   Registros existentes: {existing_count}")
+print("\n� ETAPA 3: Consolidando para estado atual por quilometragem...")
 
-# Passo A: Unir dados novos + dados existentes
-df_union = df_silver_new.unionByName(df_silver_existing, allowMissingColumns=True)
-total_before_dedup = df_union.count()
-print(f"   📊 Total antes da deduplicação: {total_before_dedup}")
-
-# Passo B: Definir Window para deduplicação
-# Particionar por: carChassis + partições de evento
-# Ordenar por: currentMileage DESC (o mais recente/maior milhagem vence)
-window_spec = Window.partitionBy(
-    "carChassis",
-    "event_year",
-    "event_month",
-    "event_day"
-).orderBy(
-    F.col("currentMileage").desc()
-)
-
-# Passo C: Aplicar row_number() e manter apenas row_number = 1
-df_deduplicated = df_union.withColumn(
-    "row_num",
-    F.row_number().over(window_spec)
-).filter(
-    F.col("row_num") == 1
-).drop("row_num")
-
-total_after_dedup = df_deduplicated.count()
-duplicates_removed = total_before_dedup - total_after_dedup
-
-print(f"   ✅ Total após deduplicação: {total_after_dedup}")
-print(f"   🗑️  Duplicatas removidas: {duplicates_removed}")
-
-# Mostrar exemplo de consolidação
-print("\n   📋 Exemplo de registros consolidados:")
-df_deduplicated.select(
-    "carChassis",
-    "currentMileage",
-    "metrics_metricTimestamp",
-    "event_year",
-    "event_month",
-    "event_day"
-).show(5, truncate=False)
-
-# ============================================================================
-# 6. ESCRITA NO SILVER (DYNAMIC PARTITION OVERWRITE)
-# ============================================================================
-
-print("\n💾 ETAPA 5: Escrevendo dados consolidados no Silver...")
-print(f"   Bucket: {args['silver_bucket']}")
-print(f"   Path: {args['silver_path']}")
-
-# Escrever no S3 usando Spark DataFrame Writer (suporta Dynamic Partition Overwrite)
-# IMPORTANTE: Usar .write.mode("overwrite") com partitionOverwriteMode=dynamic
-# garante que apenas as partições afetadas sejam sobrescritas (não todo o diretório)
-silver_output_path = f"s3://{args['silver_bucket']}/{args['silver_path']}"
-
-df_deduplicated.write \
-    .mode("overwrite") \
-    .partitionBy("event_year", "event_month", "event_day") \
-    .format("parquet") \
-    .option("compression", "snappy") \
-    .save(silver_output_path)
-
-print(f"   ✅ Dados escritos com sucesso!")
-print(f"   📦 Registros finais: {total_after_dedup}")
-
-# Mostrar partições escritas
-partitions_written = df_deduplicated.select(
-    "event_year", "event_month", "event_day"
-).distinct().collect()
-
-print(f"\n   📂 Partições escritas ({len(partitions_written)}):")
-for partition in partitions_written:
-    print(f"      - event_year={partition.event_year}/event_month={partition.event_month}/event_day={partition.event_day}")
+if new_records_count > 0:
+    
+    # Ler dados existentes na camada Silver
+    print("   📖 1/3: Lendo dados existentes da camada Silver...")
+    
+    try:
+        df_silver_existing = glueContext.create_dynamic_frame.from_catalog(
+            database=args['silver_database'],
+            table_name=args['silver_table']
+        ).toDF()
+        
+        print(f"      ✅ {df_silver_existing.count()} registros existentes encontrados")
+    except Exception as e:
+        print(f"      ⚠️  Tabela não existe ainda. Será criada: {str(e)}")
+        # Criar DataFrame vazio com schema igual aos novos dados
+        df_silver_existing = spark.createDataFrame([], schema=None)  # Schema será inferido
+    
+    # Unir dados novos + existentes
+    print("   🔄 2/3: Combinando dados novos e existentes...")
+    
+    print(f"   Registros existentes: {df_silver_existing.count()}")
+    print(f"   Registros novos: {df_silver_transformed.count()}")
+    
+    # União dos dados (allowMissingColumns para compatibilidade de schema)
+    if df_silver_existing.count() > 0:
+        df_union = df_silver_transformed.unionByName(df_silver_existing, allowMissingColumns=True)
+    else:
+        df_union = df_silver_transformed
+    
+    print(f"   Total após união: {df_union.count()}")
+    
+    # Aplicar lógica de consolidação: MAIOR QUILOMETRAGEM por chassis (estado mais atual)
+    print("   🎯 3/3: Aplicando consolidação de estado atual por quilometragem...")
+    
+    # Determinar o registro com maior quilometragem para cada carChassis
+    # current_mileage como critério principal + event_timestamp como desempate
+    
+    window_spec = Window.partitionBy("carChassis").orderBy(
+        F.col("current_mileage").desc(),
+        F.col("event_timestamp").desc()
+    )
+    
+    df_current_state = df_union.withColumn(
+        "row_number",
+        F.row_number().over(window_spec)
+    ).filter(
+        F.col("row_number") == 1
+    ).drop("row_number")
+    
+    print(f"   ✅ Estado atual consolidado: {df_current_state.count()} veículos únicos")
+    
+    # Estatísticas de consolidação
+    total_records_before = df_union.count()
+    unique_chassis_after = df_current_state.count()
+    
+    print(f"   📊 Consolidação: {total_records_before} registros → {unique_chassis_after} veículos únicos")
+    
+    # Mostrar exemplo de consolidação
+    print("\n   📋 Exemplo de registros consolidados:")
+    df_current_state.select(
+        "carChassis",
+        "current_mileage",
+        "event_timestamp",
+        "vehicle_manufacturer",
+        "vehicle_model",
+        "insurance_status",
+        "insurance_days_expired"
+    ).show(5, truncate=False)
+    
+else:
+    print("   ℹ️  Nenhum registro novo para consolidar")
+    df_current_state = spark.createDataFrame([], schema=None)
 
 # ============================================================================
-# 7. FINALIZAÇÃO DO JOB
+# 5. ESCRITA NO SILVER (DYNAMIC PARTITION OVERWRITE)
+# ============================================================================
+
+print("\n💾 ETAPA 4: Escrevendo dados consolidados no Silver...")
+
+if new_records_count > 0:
+    
+    print(f"   Bucket: {args['silver_bucket']}")
+    print(f"   Path: {args['silver_path']}")
+    
+    # Escrever no S3 usando Spark DataFrame Writer (suporta Dynamic Partition Overwrite)
+    # IMPORTANTE: Usar .write.mode("overwrite") com partitionOverwriteMode=dynamic
+    # garante que apenas as partições afetadas sejam sobrescritas (não todo o diretório)
+    silver_output_path = f"s3://{args['silver_bucket']}/{args['silver_path']}"
+    
+    df_current_state.write \
+        .mode("overwrite") \
+        .partitionBy("event_year", "event_month", "event_day") \
+        .format("parquet") \
+        .option("compression", "snappy") \
+        .save(silver_output_path)
+    
+    print(f"   ✅ Dados escritos com sucesso!")
+    print(f"   📦 Registros finais: {df_current_state.count()}")
+    
+    # Mostrar partições escritas
+    partitions_written = df_current_state.select(
+        "event_year", "event_month", "event_day"
+    ).distinct().collect()
+    
+    print(f"\n   📂 Partições escritas ({len(partitions_written)}):")
+    for partition in partitions_written:
+        print(f"      - event_year={partition.event_year}/event_month={partition.event_month}/event_day={partition.event_day}")
+
+else:
+    print("   ℹ️  Nenhum registro novo para processar - Escrita pulada")
+
+# ============================================================================
+# 6. FINALIZAÇÃO DO JOB
 # ============================================================================
 
 print("\n" + "=" * 80)
 print("✅ JOB CONCLUÍDO COM SUCESSO!")
 print("=" * 80)
 print(f"📊 Resumo:")
-print(f"   - Registros novos processados: {new_records_count}")
-print(f"   - Registros existentes: {existing_count}")
-print(f"   - Total antes da deduplicação: {total_before_dedup}")
-print(f"   - Duplicatas removidas: {duplicates_removed}")
-print(f"   - Total consolidado: {total_after_dedup}")
-print(f"   - Partições afetadas: {len(partitions_written)}")
+print(f"   - Registros Bronze processados: {new_records_count}")
+if new_records_count > 0:
+    print(f"   - Registros Silver consolidados: {df_current_state.count()}")
+    print(f"   - Veículos únicos processados: {df_current_state.count()}")
+    print(f"   - Taxa de consolidação: {df_current_state.count()}/{new_records_count} = {round(df_current_state.count()/new_records_count*100, 1)}%")
+print(f"   - Timestamp final: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # Commit do Job (atualiza bookmarks)
@@ -354,5 +401,6 @@ job.commit()
 
 print("\n🎯 Próximos passos:")
 print("   1. Executar Glue Crawler no Silver para atualizar catálogo")
-print("   2. Consultar dados consolidados no Athena")
-print("   3. Verificar que não há duplicatas por carChassis + data do evento")
+print("   2. Consultar dados consolidados no Athena") 
+print("   3. Verificar que Insurance KPIs estão funcionando")
+print("   4. Validar consolidação por current_mileage DESC")
