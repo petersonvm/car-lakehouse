@@ -48,7 +48,7 @@ resource "aws_glue_catalog_table" "car_silver" {
     }
     columns {
       name = "event_timestamp"
-      type = "timestamp"
+      type = "string"
     }
     columns {
       name = "car_chassis"
@@ -216,6 +216,9 @@ resource "null_resource" "remove_old_silver_table" {
 */
 
 # 3. ATUALIZAÇÃO DOS JOBS GLUE (PARÂMETROS)
+# NOTA: O job silver_consolidation já existe e é gerenciado em glue_jobs.tf
+# Este recurso duplicado foi comentado para evitar conflitos
+/*
 resource "aws_glue_job" "silver_consolidation_updated" {
   name     = "${var.project_name}-silver-consolidation-${var.environment}"
   role_arn = aws_iam_role.glue_job.arn
@@ -252,6 +255,7 @@ resource "aws_glue_job" "silver_consolidation_updated" {
 
   tags = var.common_tags
 }
+*/
 
 # 4. OUTPUTS
 output "silver_table_name_new" {
