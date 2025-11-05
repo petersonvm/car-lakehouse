@@ -28,11 +28,11 @@ resource "aws_glue_catalog_table" "car_silver" {
     "projection.event_year.format" = "yyyy"
     "projection.event_month.format" = "MM"
     "projection.event_day.format"  = "dd"
-    "storage.location.template" = "s3://${var.silver_bucket_name}/car_silver/event_year=$${event_year}/event_month=$${event_month}/event_day=$${event_day}/"
+    "storage.location.template" = "s3://${aws_s3_bucket.data_lake["silver"].bucket}/car_silver/event_year=$${event_year}/event_month=$${event_month}/event_day=$${event_day}/"
   }
 
   storage_descriptor {
-    location      = "s3://${var.silver_bucket_name}/car_silver/"
+    location      = "s3://${aws_s3_bucket.data_lake["silver"].bucket}/car_silver/"
     input_format  = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
 
@@ -192,13 +192,6 @@ resource "aws_glue_catalog_table" "car_silver" {
     name = "event_day"
     type = "string"
   }
-
-  tags = {
-    Layer       = "Silver"
-    DataSource  = "car_telemetry"
-    Environment = var.environment
-    Project     = "datalake-pipeline"
-  }
 }
 
 # 2. REMOÇÃO DA TABELA ANTIGA (OPCIONAL - EXECUTAR APÓS MIGRAÇÃO)
@@ -225,11 +218,11 @@ resource "null_resource" "remove_old_silver_table" {
 # 3. ATUALIZAÇÃO DOS JOBS GLUE (PARÂMETROS)
 resource "aws_glue_job" "silver_consolidation_updated" {
   name     = "${var.project_name}-silver-consolidation-${var.environment}"
-  role_arn = var.glue_role_arn
+  role_arn = aws_iam_role.glue_job.arn
 
   command {
     name            = "glueetl"
-    script_location = "s3://${var.glue_scripts_bucket}/glue_jobs/silver_consolidation_job_refactored.py"
+    script_location = "s3://${aws_s3_bucket.glue_scripts.bucket}/glue_jobs/silver_consolidation_job_refactored.py"
     python_version  = "3"
   }
 
@@ -238,15 +231,15 @@ resource "aws_glue_job" "silver_consolidation_updated" {
     "--job-bookmark-option"              = "job-bookmark-enable"
     "--enable-metrics"                   = "true"
     "--enable-spark-ui"                  = "true"
-    "--spark-event-logs-path"           = "s3://${var.glue_temp_bucket}/sparkHistoryLogs/"
+    "--spark-event-logs-path"           = "s3://${aws_s3_bucket.glue_temp.bucket}/sparkHistoryLogs/"
     "--enable-job-insights"             = "true"
     "--additional-python-modules"       = "pyarrow>=2.0.0"
-    "--TempDir"                         = "s3://${var.glue_temp_bucket}/temp/"
+    "--TempDir"                         = "s3://${aws_s3_bucket.glue_temp.bucket}/temp/"
     
     # PARÂMETROS ATUALIZADOS PARA NOVA ESTRUTURA
-    "--bronze_bucket"                   = var.bronze_bucket_name
+    "--bronze_bucket"                   = aws_s3_bucket.data_lake["bronze"].bucket
     "--bronze_path"                     = "bronze/car_data_new"
-    "--silver_bucket"                   = var.silver_bucket_name
+    "--silver_bucket"                   = aws_s3_bucket.data_lake["silver"].bucket
     "--silver_path"                     = "car_silver"  # NOVO CAMINHO
     "--database_name"                   = var.database_name
   }
@@ -278,55 +271,4 @@ variable "database_name" {
   default     = "datalake-pipeline-catalog-dev"
 }
 
-variable "silver_bucket_name" {
-  description = "Nome do bucket Silver"
-  type        = string
-  default     = "datalake-pipeline-silver-dev"
-}
-
-variable "project_name" {
-  description = "Nome do projeto"
-  type        = string
-  default     = "datalake-pipeline"
-}
-
-variable "environment" {
-  description = "Ambiente (dev, prod)"
-  type        = string
-  default     = "dev"
-}
-
-variable "glue_role_arn" {
-  description = "ARN da role do Glue"
-  type        = string
-}
-
-variable "glue_scripts_bucket" {
-  description = "Bucket para scripts Glue"
-  type        = string
-  default     = "datalake-pipeline-glue-scripts-dev"
-}
-
-variable "glue_temp_bucket" {
-  description = "Bucket temporário do Glue"
-  type        = string
-  default     = "datalake-pipeline-glue-temp-dev"
-}
-
-variable "bronze_bucket_name" {
-  description = "Nome do bucket Bronze"
-  type        = string
-  default     = "datalake-pipeline-bronze-dev"
-}
-
-variable "aws_region" {
-  description = "Região AWS"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "common_tags" {
-  description = "Tags comuns para recursos"
-  type        = map(string)
-  default     = {}
-}
+# Variables moved to variables.tf to avoid duplication

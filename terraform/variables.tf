@@ -333,6 +333,37 @@ variable "cloudwatch_log_retention_days" {
   default     = 14
 }
 
+# Silver Table Refactoring Variables
+variable "silver_bucket_name" {
+  description = "Nome do bucket Silver (computed from data_lake bucket)"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.data_lake["silver"].bucket
+}
+
+variable "bronze_bucket_name" {
+  description = "Nome do bucket Bronze (computed from data_lake bucket)"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.data_lake["bronze"].bucket
+}
+
+variable "glue_scripts_bucket" {
+  description = "Bucket para scripts Glue"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.glue_scripts.bucket
+}
+
+variable "glue_temp_bucket" {
+  description = "Bucket temporário do Glue"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.glue_temp.bucket
+}
+
+variable "glue_role_arn" {
+  description = "ARN da role do Glue (computed from existing role)"
+  type        = string
+  default     = ""  # Will be computed from aws_iam_role resource
+}
+
 # Common Tags
 variable "common_tags" {
   description = "Common tags to be applied to all resources"
