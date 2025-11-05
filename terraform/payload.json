@@ -1,0 +1,1 @@
+{"Records":[{"s3":{"bucket":{"name":"datalake-pipeline-bronze-dev"},"object":{"key":"bronze/car_data/ingest_year=2025/ingest_month=11/ingest_day=05/car_data_20251105_124742_6c03080d.parquet"}}}]}
