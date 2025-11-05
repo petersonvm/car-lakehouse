@@ -200,9 +200,6 @@ resource "aws_glue_crawler" "bronze_car_data_crawler" {
     recrawl_behavior = "CRAWL_EVERYTHING"
   }
 
-  # Table prefix to distinguish Bronze tables
-  table_prefix = "bronze_"
-
   # Configuration for Parquet with nested structures
   configuration = jsonencode({
     Version = 1.0
