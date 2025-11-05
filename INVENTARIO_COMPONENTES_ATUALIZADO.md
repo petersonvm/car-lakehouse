@@ -69,6 +69,8 @@
 
 ## 🚀 2. AWS GLUE JOBS
 
+**Total**: 5 jobs (1 Silver + 3 Gold ativos + 1 Gold legacy)
+
 ### 2.1 Job Silver (Consolidação e Limpeza)
 | Propriedade | Valor |
 |------------|-------|
@@ -241,13 +243,67 @@
 └──────────────────────────┘
 ```
 
-#### Job Gold 3: Performance Alerts (Legacy - Não em uso)
+#### Job Gold 3: Performance Alerts Slim
+| Propriedade | Valor |
+|------------|-------|
+| **Nome** | `datalake-pipeline-gold-performance-alerts-slim-dev` |
+| **Camada** | Silver → Gold |
+| **Script** | `s3://datalake-pipeline-glue-scripts-dev/glue_jobs/gold_performance_alerts_slim_job.py` |
+| **Role IAM** | `arn:aws:iam::901207488135:role/datalake-pipeline-gold-job-role-dev` |
+| **Glue Version** | 4.0 |
+| **Workers** | 2 (G.1X) |
+| **Status** | ✅ **ATIVO** (parte do workflow) |
+
+**Parâmetros:**
+```json
+{
+  "--silver_database": "datalake-pipeline-catalog-dev",
+  "--silver_table": "silver_car_telemetry",
+  "--gold_path": "gold_performance_alerts_slim",
+  "--gold_bucket": "datalake-pipeline-gold-dev"
+}
+```
+
+**Transformações:**
+- Identifica alertas de performance baseados em thresholds
+- Monitora métricas críticas (temperatura motor, pressão pneus, bateria)
+- Gera log de alertas para veículos com anomalias
+- Versão "slim" (otimizada) do job original
+
+**Execuções Recentes (2025-11-05):**
+- 19:03 → SUCCEEDED (106s)
+- 18:03 → SUCCEEDED (113s)
+- 17:06 → SUCCEEDED (75s)
+- 16:59 → SUCCEEDED (65s)
+
+**Fluxo de Dados:**
+```
+┌──────────────────────┐
+│ silver_car_telemetry │
+└──────────┬───────────┘
+           │ READ (metrics fields)
+           ▼
+┌─────────────────────────────────────────┐
+│ gold_performance_alerts_slim_job.py     │
+│ • Check thresholds (temp, pressure, etc)│
+│ • Flag anomalies                        │
+│ • Generate alert records                │
+└──────────┬──────────────────────────────┘
+           │ WRITE (Parquet)
+           ▼
+┌──────────────────────────────┐
+│ S3 Gold                      │
+│ gold_performance_alerts_slim/│
+└──────────────────────────────┘
+```
+
+#### Job Gold 4: Performance Alerts (Legacy)
 | Propriedade | Valor |
 |------------|-------|
 | **Nome** | `datalake-pipeline-gold-performance-alerts-dev` |
-| **Status** | ⚠️ Legacy (não utilizado no workflow atual) |
+| **Status** | ⚠️ Legacy (substituído pela versão Slim) |
 | **Script** | `s3://datalake-pipeline-glue-scripts-dev/glue_jobs/gold_performance_alerts_job.py` |
-| **Descrição** | Job legado, mantido para histórico |
+| **Descrição** | Job legado, versão original antes da otimização. Não está no workflow. |
 
 ---
 
@@ -345,8 +401,10 @@ datalake-pipeline-silver-dev/
 datalake-pipeline-gold-dev/
 ├── gold_car_current_state_new/
 │   └── *.parquet (latest state per vehicle)
-└── fuel_efficiency_monthly/
-    └── *.parquet (monthly aggregations)
+├── fuel_efficiency_monthly/
+│   └── *.parquet (monthly aggregations)
+└── gold_performance_alerts_slim/
+    └── *.parquet (alert logs)
 ```
 
 ---
@@ -714,12 +772,13 @@ graph LR
 | `glue.driver.BlockManager.disk.diskSpaceUsed_MB` | Glue | JobName |
 | `glue.driver.ExecutorAllocationManager.executors.numberMaxNeededExecutors` | Glue | JobName |
 
-### 10.3 Job Execution Status (Últimas Execuções)
+### 10.3 Job Execution Status (Últimas Execuções - 2025-11-05)
 | Job | Status | Duration | DPU Hours | Cost Estimate |
 |-----|--------|----------|-----------|---------------|
 | Silver Consolidation | SUCCEEDED | 78s | 0.043 | $0.004 |
 | Gold Car Current State | SUCCEEDED | 91s | 0.051 | $0.005 |
 | Gold Fuel Efficiency | SUCCEEDED | 93s | 0.052 | $0.005 |
+| Gold Performance Alerts Slim | SUCCEEDED | 106s | 0.059 | $0.006 |
 
 ---
 
@@ -804,8 +863,11 @@ processing_timestamp: timestamp
 
 ### 13.3 Pipeline Status
 - ✅ **Bronze → Silver**: 100% funcional
-- ✅ **Silver → Gold**: 100% funcional (3 jobs executando com sucesso)
-- ✅ **Workflow**: Orquestração completa funcionando
+- ✅ **Silver → Gold**: 100% funcional (3 jobs ativos executando com sucesso)
+  - Job 1: Car Current State ✅
+  - Job 2: Fuel Efficiency ✅
+  - Job 3: Performance Alerts Slim ✅
+- ✅ **Workflow**: Orquestração completa funcionando (Fan-Out paralelo)
 - ✅ **Athena**: Queries funcionando em todas as camadas
 
 ---
@@ -818,7 +880,8 @@ processing_timestamp: timestamp
    - Consolidar nomenclatura (usar apenas `*-crawler-dev`)
 
 2. **Lambda Legacy**:
-   - Desativar/deletar 4 funções Lambda não utilizadas
+   - Desativar/deletar 3 funções Lambda não utilizadas (cleansing, analysis, compliance)
+   - Manter Lambda Ingestion (ativa e funcional)
    - Reduzir custos mensais (~$2-3/mês)
 
 3. **Monitoramento**:
