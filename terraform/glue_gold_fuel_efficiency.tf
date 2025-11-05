@@ -191,8 +191,8 @@ resource "aws_cloudwatch_log_group" "gold_fuel_job_logs" {
 resource "aws_s3_object" "gold_fuel_script" {
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "glue_jobs/gold_fuel_efficiency_job.py"
-  source = "${path.module}/../glue_jobs/gold_fuel_efficiency_job.py"
-  etag   = filemd5("${path.module}/../glue_jobs/gold_fuel_efficiency_job.py")
+  source = "${path.module}/../glue_jobs/gold_fuel_efficiency_job_refactored.py"  # Versão refatorada CORRIGIDA
+  etag   = filemd5("${path.module}/../glue_jobs/gold_fuel_efficiency_job_refactored.py")
 
   tags = {
     Name  = "gold-fuel-efficiency-script"
@@ -229,6 +229,9 @@ resource "aws_glue_job" "gold_fuel_efficiency" {
     "--TempDir"                          = "s3://${aws_s3_bucket.glue_temp.id}/temp/"
     "--gold_bucket"                      = aws_s3_bucket.data_lake["gold"].id
     "--glue_database"                    = aws_glue_catalog_database.data_lake_database.name
+    "--database_name"                    = aws_glue_catalog_database.data_lake_database.name  # Novo argumento
+    "--silver_table_name"                = var.silver_table_name  # Novo argumento
+    "--gold_path"                        = "fuel_efficiency_monthly/"  # Path dentro do bucket (sem s3:// e bucket name)
   }
 
   execution_property {

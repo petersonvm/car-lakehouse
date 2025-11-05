@@ -318,7 +318,7 @@ variable "bronze_table_name" {
 variable "silver_table_name" {
   description = "Name of the Silver table in Glue Catalog"
   type        = string
-  default     = "silver_car_telemetry"
+  default     = "car_silver"  # Tabela Silver com schema snake_case
 }
 
 variable "silver_path" {
@@ -331,6 +331,37 @@ variable "cloudwatch_log_retention_days" {
   description = "CloudWatch log retention period in days for Glue Job"
   type        = number
   default     = 14
+}
+
+# Silver Table Refactoring Variables
+variable "silver_bucket_name" {
+  description = "Nome do bucket Silver (computed from data_lake bucket)"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.data_lake["silver"].bucket
+}
+
+variable "bronze_bucket_name" {
+  description = "Nome do bucket Bronze (computed from data_lake bucket)"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.data_lake["bronze"].bucket
+}
+
+variable "glue_scripts_bucket" {
+  description = "Bucket para scripts Glue"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.glue_scripts.bucket
+}
+
+variable "glue_temp_bucket" {
+  description = "Bucket temporário do Glue"
+  type        = string
+  default     = ""  # Will be computed from aws_s3_bucket.glue_temp.bucket
+}
+
+variable "glue_role_arn" {
+  description = "ARN da role do Glue (computed from existing role)"
+  type        = string
+  default     = ""  # Will be computed from aws_iam_role resource
 }
 
 # Common Tags

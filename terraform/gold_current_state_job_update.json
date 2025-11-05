@@ -1,0 +1,24 @@
+{
+    "Role": "arn:aws:iam::901207488135:role/datalake-pipeline-glue-job-role-dev",
+    "Command": {
+        "Name": "glueetl",
+        "ScriptLocation": "s3://datalake-pipeline-glue-scripts-dev/glue_jobs/gold_car_current_state_job_refactored.py",
+        "PythonVersion": "3"
+    },
+    "DefaultArguments": {
+        "--job-bookmark-option": "job-bookmark-enable",
+        "--enable-metrics": "true",
+        "--enable-spark-ui": "true",
+        "--spark-event-logs-path": "s3://datalake-pipeline-glue-logs-dev/sparkHistoryLogs/",
+        "--enable-job-insights": "true",
+        "--enable-observability-metrics": "true",
+        "--database_name": "datalake-pipeline-catalog-dev",
+        "--silver_table_name": "car_silver"
+    },
+    "Description": "Job Gold Current State refatorado para usar car_silver",
+    "MaxRetries": 1,
+    "Timeout": 10,
+    "GlueVersion": "4.0",
+    "NumberOfWorkers": 2,
+    "WorkerType": "G.1X"
+}
