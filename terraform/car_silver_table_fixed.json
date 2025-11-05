@@ -1,0 +1,61 @@
+{
+    "Name": "car_silver",
+    "Description": "Tabela Silver principal - Dados processados dos veículos (Schema corrigido para timestamp)",
+    "TableType": "EXTERNAL_TABLE",
+    "Parameters": {
+        "classification": "parquet",
+        "compressionType": "snappy",
+        "typeOfData": "file",
+        "has_encrypted_data": "false"
+    },
+    "StorageDescriptor": {
+        "Columns": [
+            {"Name": "event_id", "Type": "string"},
+            {"Name": "event_timestamp", "Type": "string"},
+            {"Name": "car_chassis", "Type": "string"},
+            {"Name": "manufacturer", "Type": "string"},
+            {"Name": "model", "Type": "string"},
+            {"Name": "year", "Type": "int"},
+            {"Name": "model_year", "Type": "int"},
+            {"Name": "gas_type", "Type": "string"},
+            {"Name": "fuel_capacity_liters", "Type": "int"},
+            {"Name": "color", "Type": "string"},
+            {"Name": "insurance_provider", "Type": "string"},
+            {"Name": "insurance_policy_number", "Type": "string"},
+            {"Name": "insurance_valid_until", "Type": "string"},
+            {"Name": "last_service_date", "Type": "string"},
+            {"Name": "last_service_mileage_km", "Type": "int"},
+            {"Name": "oil_life_percentage", "Type": "double"},
+            {"Name": "rental_agreement_id", "Type": "string"},
+            {"Name": "rental_customer_id", "Type": "string"},
+            {"Name": "rental_start_date", "Type": "string"},
+            {"Name": "trip_start_timestamp", "Type": "string"},
+            {"Name": "trip_end_timestamp", "Type": "string"},
+            {"Name": "trip_mileage_km", "Type": "double"},
+            {"Name": "trip_time_minutes", "Type": "int"},
+            {"Name": "trip_fuel_liters", "Type": "double"},
+            {"Name": "trip_max_speed_kmh", "Type": "int"},
+            {"Name": "current_mileage_km", "Type": "int"},
+            {"Name": "fuel_available_liters", "Type": "double"},
+            {"Name": "engine_temp_celsius", "Type": "int"},
+            {"Name": "oil_temp_celsius", "Type": "int"},
+            {"Name": "battery_charge_percentage", "Type": "int"},
+            {"Name": "tire_pressure_front_left_psi", "Type": "double"},
+            {"Name": "tire_pressure_front_right_psi", "Type": "double"},
+            {"Name": "tire_pressure_rear_left_psi", "Type": "double"},
+            {"Name": "tire_pressure_rear_right_psi", "Type": "double"}
+        ],
+        "Location": "s3://datalake-pipeline-silver-dev/car_silver/",
+        "InputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+        "OutputFormat": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+        "SerdeInfo": {
+            "Name": "ParquetHiveSerDe",
+            "SerializationLibrary": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+        }
+    },
+    "PartitionKeys": [
+        {"Name": "event_year", "Type": "string"},
+        {"Name": "event_month", "Type": "string"},
+        {"Name": "event_day", "Type": "string"}
+    ]
+}
