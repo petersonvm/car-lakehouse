@@ -25,7 +25,7 @@ resource "aws_glue_trigger" "trigger_start_silver_job" {
 
 # ===================================================================
 # Gatilho 2: Do Job Silver para o Crawler Silver
-# Aciona o crawler da tabela car_silver após o sucesso do job.
+# Aciona o crawler da tabela silver_car_telemetry após o sucesso do job.
 # ===================================================================
 resource "aws_glue_trigger" "trigger_silver_job_to_crawler" {
   name          = "trigger-silver-job-to-crawler"
@@ -40,7 +40,7 @@ resource "aws_glue_trigger" "trigger_silver_job_to_crawler" {
   }
 
   actions {
-    crawler_name = aws_glue_crawler.car_silver_crawler.name
+    crawler_name = aws_glue_crawler.silver_car_telemetry_crawler.name
   }
 }
 
@@ -55,7 +55,7 @@ resource "aws_glue_trigger" "trigger_silver_crawler_to_gold_jobs" {
 
   predicate {
     conditions {
-      crawler_name = aws_glue_crawler.car_silver_crawler.name
+      crawler_name = aws_glue_crawler.silver_car_telemetry_crawler.name
       crawl_state  = "SUCCEEDED"
     }
   }

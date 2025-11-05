@@ -318,7 +318,7 @@ variable "bronze_table_name" {
 variable "silver_table_name" {
   description = "Name of the Silver table in Glue Catalog"
   type        = string
-  default     = "car_silver"  # Tabela Silver com schema snake_case
+  default     = "silver_car_telemetry"  # Tabela Silver com schema snake_case
 }
 
 variable "silver_path" {

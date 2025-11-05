@@ -100,7 +100,7 @@ variable "gold_performance_alerts_slim_job_name" {
 # ================================================================================
 
 variable "silver_crawler_name" {
-  description = "Nome do crawler Silver car_silver"
+  description = "Nome do crawler Silver silver_car_telemetry"
   type        = string
   default     = "datalake-pipeline-silver-car-crawler-dev"
 }

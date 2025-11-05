@@ -132,7 +132,7 @@ data "aws_glue_job" "test_silver_job" {
 # ================================================================================
 # 4. VERIFICAÇÃO: Tabela Silver Car Telemetry New (Se ainda existir)
 # ================================================================================
-# Justificativa: Substituída por 'car_silver' - marcada como deletada no histórico
+# Justificativa: Substituída por 'silver_car_telemetry' - marcada como deletada no histórico
 # Impacto: Limpeza do catálogo (sem custo direto)
 # Status: Deve ter sido removida, mas verificar para garantir
 
@@ -159,7 +159,7 @@ data "aws_glue_catalog_table" "legacy_silver_table" {
 #    - Executar crawler retornou 0 tabelas criadas
 #
 # 2. s3://datalake-pipeline-silver-dev/silver_car_telemetry_new/ (se existir)
-#    - Tabela migrada para car_silver
+#    - Tabela migrada para silver_car_telemetry
 
 # AÇÃO MANUAL: Listar e revisar dados antes de deletar
 # aws s3 ls s3://datalake-pipeline-gold-dev/performance_alerts_log/ --recursive --human-readable --summarize

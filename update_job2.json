@@ -1,0 +1,32 @@
+{
+  "JobUpdate": {
+    "Role": "arn:aws:iam::901207488135:role/datalake-pipeline-gold-job-role-dev",
+  "Command": {
+    "Name": "glueetl",
+    "ScriptLocation": "s3://datalake-pipeline-glue-scripts-dev/glue_jobs/gold_fuel_efficiency_job.py",
+    "PythonVersion": "3"
+  },
+  "DefaultArguments": {
+    "--silver_database": "datalake-pipeline-catalog-dev",
+    "--enable-glue-datacatalog": "true",
+    "--job-bookmark-option": "job-bookmark-disable",
+    "--TempDir": "s3://datalake-pipeline-glue-temp-dev/temp/",
+    "--silver_table_name": "silver_car_telemetry",
+    "--enable-spark-ui": "true",
+    "--enable-metrics": "true",
+    "--silver_table": "silver_car_telemetry",
+    "--gold_bucket": "datalake-pipeline-gold-dev",
+    "--glue_database": "datalake-pipeline-catalog-dev",
+    "--database_name": "datalake-pipeline-catalog-dev",
+    "--conf": "spark.sql.sources.partitionOverwriteMode=static",
+    "--enable-continuous-cloudwatch-log": "true",
+    "--gold_path": "fuel_efficiency_metrics",
+    "--job-language": "python",
+    "--gold_database": "datalake-pipeline-catalog-dev"
+  },
+  "MaxRetries": 0,
+  "Timeout": 60,
+  "MaxCapacity": 2.0,
+  "GlueVersion": "4.0"
+  }
+}
