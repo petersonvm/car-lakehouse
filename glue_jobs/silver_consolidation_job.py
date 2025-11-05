@@ -1,15 +1,20 @@
 """
-AWS Glue ETL Job - Silver Layer Consolidation (NOVA ESTRUTURA car_raw.json)
+AWS Glue ETL Job - Silver Layer Consolidation
 ==========================================================================
 
 Objetivo:
-- Ler dados do Bronze (car_raw.json com event_id, vehicle_static_info, etc)
+- Ler dados do Bronze via Glue Catalog (tabela car_bronze)
 - Aplicar achatamento das estruturas aninhadas
 - Consolidar estado atual por veículo
 - Manter KPIs de seguro compatíveis
 - Escrever resultado Silver particionado
 
-Estrutura Bronze Nova (car_raw.json):
+Fonte Bronze:
+- Tabela: car_bronze (Glue Data Catalog)
+- Formato: Parquet com structs nested
+- Partições: ingest_year, ingest_month, ingest_day
+
+Estrutura Bronze (car_bronze):
 - event_id, event_primary_timestamp, carChassis
 - vehicle_static_info.data: Model, year, Manufacturer, gasType, etc
 - vehicle_dynamic_state.insurance_info.data: provider, policy_number, validUntil
@@ -24,7 +29,7 @@ Resultado Silver:
 - Particionado por data do evento
 
 Autor: Sistema de Data Lakehouse  
-Data: 2025-11-04 (Nova Estrutura car_raw.json)
+Data: 2025-11-05 (Lê de car_bronze via Glue Catalog)
 """
 
 import sys
@@ -47,8 +52,8 @@ from datetime import datetime
 # Obter parâmetros do Job
 args = getResolvedOptions(sys.argv, [
     'JOB_NAME',
-    'bronze_bucket',
-    'bronze_json_path', 
+    'bronze_database',
+    'bronze_table',
     'silver_bucket',
     'silver_path'
 ])
@@ -69,24 +74,29 @@ print(f"📅 Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
-# 2. LEITURA DOS DADOS NOVOS DO BRONZE (NOVA ESTRUTURA car_raw.json)
+# 2. LEITURA DOS DADOS DO BRONZE VIA GLUE CATALOG
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura de dados novos do Bronze (car_raw.json)...")
-print(f"   Bronze Bucket: {args['bronze_bucket']}")
-print(f"   Bronze JSON Path: {args['bronze_json_path']}")
+print("\n📥 ETAPA 1: Leitura de dados do Bronze via Glue Catalog...")
+print(f"   Database: {args['bronze_database']}")
+print(f"   Table: {args['bronze_table']}")
 
-# Ler dados JSON diretamente do S3
-bronze_path = f"s3://{args['bronze_bucket']}/{args['bronze_json_path']}"
-df_bronze_json = spark.read.option("multiline", "true").json(bronze_path)
+# Ler dados da tabela Bronze do Glue Catalog
+bronze_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
+    database=args['bronze_database'],
+    table_name=args['bronze_table']
+)
 
-# Contar registros novos
-new_records_count = df_bronze_json.count()
+# Converter para DataFrame
+df_bronze = bronze_dynamic_frame.toDF()
+
+# Contar registros
+new_records_count = df_bronze.count()
 print(f"   ✅ Registros encontrados: {new_records_count}")
 
-# Mostrar schema do Bronze (car_raw.json)
-print("\n   📊 Schema Bronze (car_raw.json):")
-df_bronze_json.printSchema()
+# Mostrar schema do Bronze
+print("\n   📊 Schema Bronze (car_bronze):")
+df_bronze.printSchema()
 
 if new_records_count == 0:
     print("   ℹ️  Nenhum registro para processar.")
@@ -94,16 +104,16 @@ if new_records_count == 0:
     sys.exit(0)
 else:
     print(f"   🔍 Exemplo de dados Bronze:")
-    df_bronze_json.select("event_id", "carChassis").show(2, truncate=False)
+    df_bronze.select("event_id", "carChassis").show(2, truncate=False)
 
 # ============================================================================
-# 3. ACHATAMENTO (FLATTENING) DA NOVA ESTRUTURA car_raw.json
+# 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA BRONZE
 # ============================================================================
 
-print("\n🔧 ETAPA 2: Achatamento da estrutura car_raw.json...")
+print("\n🔧 ETAPA 2: Achatamento da estrutura Bronze...")
 
-# Aplicar flattening da nova estrutura
-df_silver_flattened = df_bronze_json.select(
+# Aplicar flattening da estrutura
+df_silver_flattened = df_bronze.select(
     # Campos principais
     F.col("event_id").alias("event_id"),
     F.to_timestamp(F.col("event_primary_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'").alias("event_timestamp"),
