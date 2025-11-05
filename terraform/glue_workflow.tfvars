@@ -39,7 +39,7 @@ gold_performance_alerts_slim_job_name = "datalake-pipeline-gold-performance-aler
 # ================================================================================
 # IMPORTANTE: Estes crawlers já devem existir no ambiente AWS antes do deploy
 
-silver_crawler_name                        = "datalake-pipeline-silver-car-crawler-dev"
+silver_crawler_name                        = "datalake-pipeline-silver-crawler-dev"
 gold_car_current_state_crawler_name        = "datalake-pipeline-gold-car-current-state-crawler-dev"
 gold_fuel_efficiency_crawler_name          = "datalake-pipeline-gold-fuel-efficiency-crawler-dev"
 gold_performance_alerts_slim_crawler_name  = "datalake-pipeline-gold-performance-alerts-slim-crawler-dev"

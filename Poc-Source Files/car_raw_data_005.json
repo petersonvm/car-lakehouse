@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_59260246-28b2-4c3c-bf60-d576ed43ef0e",
+  "event_primary_timestamp": "2025-01-26T04:00:00Z",
+  "processing_timestamp": "2025-01-26T04:00:51Z",
+  "carChassis": "RLz6t1KqSOr9qFY3FDeLkkblry4Yc75U8227yApdWC2",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-01-26T04:00:33Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Polo",
+      "year": 2025,
+      "ModelYear": 2025,
+      "Manufacturer": "Volkswagen",
+      "gasType": "Electric",
+      "fuelCapacityLiters": 0,
+      "color": "Blue"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-01-26T04:00:36Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "Azul Seguros",
+        "policy_number": "INS-628121727",
+        "validUntil": "2026-01-16"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-01-26T04:00:37Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2024-08-22",
+        "last_service_mileage": 0,
+        "oil_life_percentage": 54.3
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-01-26T04:00:35Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-465920",
+      "customer_id": "CUST-4184",
+      "rental_start_date": "2024-12-29T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-01-26T03:59:40Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-01-26T03:24:00Z",
+        "tripEndTimestamp": "2025-01-26T04:00:00Z",
+        "tripMileage": 36.8,
+        "tripTimeMinutes": 36,
+        "tripFuelLiters": 0.0,
+        "tripMaxSpeedKm": 126
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-01-26T03:59:39Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 36,
+        "fuelAvailableLiters": 0.0,
+        "engineTempCelsius": 92,
+        "oilTempCelsius": 113,
+        "batteryChargePerc": 90,
+        "tire_pressures_psi": {
+          "front_left": 34.8,
+          "front_right": 30.4,
+          "rear_left": 34.1,
+          "rear_right": 32.6
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_249caae1-af02-412e-a90c-59e9961f6652",
+  "event_primary_timestamp": "2025-02-06T20:00:00Z",
+  "processing_timestamp": "2025-02-06T20:01:38Z",
+  "carChassis": "dBKTuuUtUuLUw8gCHjZHaRgJa7yu8IL0ei1jScYD0vG",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-02-06T20:00:27Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Corolla",
+      "year": 2023,
+      "ModelYear": 2023,
+      "Manufacturer": "Toyota",
+      "gasType": "Gas",
+      "fuelCapacityLiters": 72,
+      "color": "Orange"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-02-06T20:00:30Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "Azul Seguros",
+        "policy_number": "INS-716111525",
+        "validUntil": "2025-04-22"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-02-06T20:00:31Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2024-12-24",
+        "last_service_mileage": 0,
+        "oil_life_percentage": 51.7
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-02-06T20:00:29Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-236006",
+      "customer_id": "CUST-7490",
+      "rental_start_date": "2025-01-28T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-02-06T19:59:34Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-02-06T16:51:00Z",
+        "tripEndTimestamp": "2025-02-06T20:00:00Z",
+        "tripMileage": 17.7,
+        "tripTimeMinutes": 189,
+        "tripFuelLiters": 14.6,
+        "tripMaxSpeedKm": 140
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-02-06T19:59:33Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 17,
+        "fuelAvailableLiters": 40.699999999999996,
+        "engineTempCelsius": 116,
+        "oilTempCelsius": 123,
+        "batteryChargePerc": 34,
+        "tire_pressures_psi": {
+          "front_left": 33.4,
+          "front_right": 31.7,
+          "rear_left": 32.2,
+          "rear_right": 30.0
+        }
+      }
+    }
+  }
+}

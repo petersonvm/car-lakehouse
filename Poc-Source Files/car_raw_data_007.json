@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_31e5c0ac-bd3f-4c5a-9645-245710019231",
+  "event_primary_timestamp": "2025-04-11T03:00:00Z",
+  "processing_timestamp": "2025-04-11T03:01:55Z",
+  "carChassis": "qddJQZi6y4IR2Jyj4MG00OrkLHqJbiui6raYIWX77Ut",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-04-11T03:00:32Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Gol",
+      "year": 2025,
+      "ModelYear": 2026,
+      "Manufacturer": "Volkswagen",
+      "gasType": "Hybrid",
+      "fuelCapacityLiters": 60,
+      "color": "Yellow"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-04-11T03:00:35Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "SulAmérica",
+        "policy_number": "INS-109097970",
+        "validUntil": "2025-09-07"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-04-11T03:00:36Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2024-12-21",
+        "last_service_mileage": 0,
+        "oil_life_percentage": 76.1
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-04-11T03:00:34Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-531314",
+      "customer_id": "CUST-1228",
+      "rental_start_date": "2025-03-28T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-04-11T02:59:39Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-04-10T22:10:00Z",
+        "tripEndTimestamp": "2025-04-11T03:00:00Z",
+        "tripMileage": 34.6,
+        "tripTimeMinutes": 290,
+        "tripFuelLiters": 1.4,
+        "tripMaxSpeedKm": 111
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-04-11T02:59:38Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 34,
+        "fuelAvailableLiters": 53.300000000000004,
+        "engineTempCelsius": 90,
+        "oilTempCelsius": 126,
+        "batteryChargePerc": 25,
+        "tire_pressures_psi": {
+          "front_left": 32.5,
+          "front_right": 34.4,
+          "rear_left": 33.4,
+          "rear_right": 31.6
+        }
+      }
+    }
+  }
+}
