@@ -160,8 +160,8 @@ resource "aws_iam_role_policy" "gold_job_scripts" {
 resource "aws_s3_object" "gold_car_current_state_script" {
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "glue_jobs/gold_car_current_state_job.py"
-  source = "${path.module}/../glue_jobs/gold_car_current_state_job.py"
-  etag   = filemd5("${path.module}/../glue_jobs/gold_car_current_state_job.py")
+  source = "${path.module}/../glue_jobs/gold_car_current_state_job_refactored.py"  # Versão refatorada CORRIGIDA
+  etag   = filemd5("${path.module}/../glue_jobs/gold_car_current_state_job_refactored.py")
 
   tags = {
     Name        = "gold-car-current-state-script"
@@ -212,8 +212,10 @@ resource "aws_glue_job" "gold_car_current_state" {
     "--TempDir"                          = "s3://${aws_s3_bucket.glue_temp.id}/temp/"
     
     # Parâmetros customizados do job
+    "--database_name"   = aws_glue_catalog_database.data_lake_database.name  # Adicionado
     "--silver_database" = aws_glue_catalog_database.data_lake_database.name
     "--silver_table"    = var.silver_table_name
+    "--silver_table_name" = var.silver_table_name  # Adicionado para compatibilidade com script refactored
     "--gold_database"   = aws_glue_catalog_database.data_lake_database.name
     "--gold_bucket"     = aws_s3_bucket.data_lake["gold"].id
     "--gold_path"       = "car_current_state"

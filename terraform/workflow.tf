@@ -56,7 +56,7 @@ resource "aws_glue_trigger" "trigger_silver_crawler_to_gold_jobs" {
   predicate {
     conditions {
       crawler_name = aws_glue_crawler.car_silver_crawler.name
-      state        = "SUCCEEDED"
+      crawl_state  = "SUCCEEDED"
     }
   }
 

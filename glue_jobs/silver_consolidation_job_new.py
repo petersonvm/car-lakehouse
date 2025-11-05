@@ -106,7 +106,7 @@ print("\n🔧 ETAPA 2: Achatamento da estrutura car_raw.json...")
 df_silver_flattened = df_bronze_json.select(
     # Campos principais
     F.col("event_id").alias("event_id"),
-    F.to_timestamp(F.col("event_primary_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'").alias("event_timestamp"),
+    F.col("event_primary_timestamp").alias("event_timestamp"),
     F.col("processing_timestamp").alias("processing_timestamp"),
     F.col("carChassis").alias("car_chassis"),
     
@@ -180,7 +180,7 @@ df_silver_flattened.printSchema()
 # 4. ENRIQUECIMENTO E KPIS DE SEGURO (COMPATÍVEL COM ESTRUTURA NOVA)
 # ============================================================================
 
-print("\n� ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
+print("\n📈 ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
 
 # Enriquecer com KPIs de seguro para nova estrutura
 df_silver_enriched = df_silver_flattened.select(
@@ -200,10 +200,10 @@ df_silver_enriched = df_silver_flattened.select(
      .when(F.col("oil_life_percentage") < 50, "LOW")
      .otherwise("OK").alias("oil_status"),
     
-    # Particionamento por data do evento  
-    F.year(F.col("event_timestamp")).cast("string").alias("event_year"),
-    F.format_string("%02d", F.month(F.col("event_timestamp"))).alias("event_month"),
-    F.format_string("%02d", F.dayofmonth(F.col("event_timestamp"))).alias("event_day")
+    # Particionamento por data do evento
+    F.year(F.to_timestamp(F.col("event_timestamp"))).alias("event_year"),
+    F.month(F.to_timestamp(F.col("event_timestamp"))).alias("event_month"),
+    F.dayofmonth(F.to_timestamp(F.col("event_timestamp"))).alias("event_day")
 )
 
 print(f"   ✅ Registros após enriquecimento: {df_silver_enriched.count()}")
@@ -268,256 +268,4 @@ print(f"🕒 Timestamp final: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # Commit do job
-job.commit()
-
-# ============================================================================
-# 6. ESTATÍSTICAS FINAIS E ENCERRAMENTO
-# ============================================================================
-
-print("\n📊 ESTATÍSTICAS FINAIS:")
-print(f"   📥 Registros lidos do Bronze: {new_records_count}")
-print(f"   📤 Registros gravados no Silver: {df_silver_final.count()}")
-print(f"   🎯 Campos Silver total: {len(df_silver_final.columns)}")
-
-# Mostrar campos Silver criados
-print(f"\n   📋 Campos Silver criados ({len(df_silver_final.columns)}):")
-for i, col_name in enumerate(df_silver_final.columns, 1):
-    print(f"      {i:2d}. {col_name}")
-
-print("\n" + "=" * 80)
-print("🎉 Silver Consolidation Job - CONCLUÍDO COM SUCESSO!")
-print(f"🕒 Timestamp final: {datetime.now().isoformat()}")
-print("=" * 80)
-
-# Commit do job
-job.commit()
-    F.col("vehicle_dynamic_state.engine.data.temperature").alias("engine_temperature"),
-    F.col("vehicle_dynamic_state.engine.data.oil_pressure").alias("engine_oil_pressure"),
-    F.col("vehicle_dynamic_state.engine.data.status").alias("engine_status"),
-    
-    # vehicle_dynamic_state.transmission
-    F.col("vehicle_dynamic_state.transmission.extraction_timestamp").alias("transmission_extraction_timestamp"),
-    F.col("vehicle_dynamic_state.transmission.source_system").alias("transmission_source_system"),
-    F.col("vehicle_dynamic_state.transmission.data.gear").alias("transmission_gear"),
-    F.col("vehicle_dynamic_state.transmission.data.mode").alias("transmission_mode"),
-    F.col("vehicle_dynamic_state.transmission.data.fluid_temperature").alias("transmission_fluid_temperature"),
-    
-    # vehicle_dynamic_state.brakes
-    F.col("vehicle_dynamic_state.brakes.extraction_timestamp").alias("brakes_extraction_timestamp"),
-    F.col("vehicle_dynamic_state.brakes.source_system").alias("brakes_source_system"),
-    F.col("vehicle_dynamic_state.brakes.data.pad_wear_front").alias("brakes_pad_wear_front"),
-    F.col("vehicle_dynamic_state.brakes.data.pad_wear_rear").alias("brakes_pad_wear_rear"),
-    F.col("vehicle_dynamic_state.brakes.data.fluid_level").alias("brakes_fluid_level"),
-    
-    # service_history
-    F.col("service_history.extraction_timestamp").alias("service_extraction_timestamp"),
-    F.col("service_history.source_system").alias("service_source_system"),
-    F.col("service_history.data.last_service_date").alias("service_last_date"),
-    F.col("service_history.data.next_service_due").alias("service_next_due"),
-    F.col("service_history.data.mileage_at_last_service").alias("service_mileage_last"),
-    F.col("service_history.data.service_type").alias("service_type"),
-    
-    # trip_data.current_trip
-    F.col("trip_data.current_trip.extraction_timestamp").alias("trip_extraction_timestamp"),
-    F.col("trip_data.current_trip.source_system").alias("trip_source_system"),
-    F.col("trip_data.current_trip.data.trip_id").alias("trip_id"),
-    F.col("trip_data.current_trip.data.start_time").alias("trip_start_time"),
-    F.col("trip_data.current_trip.data.duration_minutes").alias("trip_duration_minutes"),
-    F.col("trip_data.current_trip.data.distance_km").alias("trip_distance_km"),
-    F.col("trip_data.current_trip.data.fuel_consumed_liters").alias("trip_fuel_consumed_liters"),
-    
-    # trip_data.telemetry
-    F.col("trip_data.telemetry.extraction_timestamp").alias("telemetry_extraction_timestamp"),
-    F.col("trip_data.telemetry.source_system").alias("telemetry_source_system"),
-    F.col("trip_data.telemetry.data.speed_kmh").alias("telemetry_speed_kmh"),
-    F.col("trip_data.telemetry.data.fuel_level_percent").alias("telemetry_fuel_level_percent"),
-    F.col("trip_data.telemetry.data.battery_voltage").alias("telemetry_battery_voltage"),
-    F.col("trip_data.telemetry.data.odometer_km").alias("telemetry_odometer_km"),
-    
-    # trip_data.telemetry.tire_pressures_psi
-    F.col("trip_data.telemetry.data.tire_pressures_psi.front_left").alias("tire_pressure_front_left"),
-    F.col("trip_data.telemetry.data.tire_pressures_psi.front_right").alias("tire_pressure_front_right"),
-    F.col("trip_data.telemetry.data.tire_pressures_psi.rear_left").alias("tire_pressure_rear_left"),
-    F.col("trip_data.telemetry.data.tire_pressures_psi.rear_right").alias("tire_pressure_rear_right"),
-    
-    # trip_data.telemetry.gps
-    F.col("trip_data.telemetry.data.gps.latitude").alias("gps_latitude"),
-    F.col("trip_data.telemetry.data.gps.longitude").alias("gps_longitude"),
-    F.col("trip_data.telemetry.data.gps.altitude").alias("gps_altitude"),
-    F.col("trip_data.telemetry.data.gps.heading").alias("gps_heading")
-)
-
-print(f"      ✅ {len(df_flattened.columns)} colunas após achatamento")
-
-# ----------------------------------------------------------------------------
-# 3.2 LIMPEZA E PADRONIZAÇÃO
-# ----------------------------------------------------------------------------
-
-print("   🔹 2/4: Aplicando limpeza e padronização...")
-
-df_clean = df_flattened.withColumn(
-    "manufacturer",
-    F.initcap(F.col("manufacturer"))  # Title Case
-).withColumn(
-    "color",
-    F.lower(F.col("color"))  # lowercase
-).withColumn(
-    "insurance_provider",
-    F.initcap(F.col("insurance_provider"))  # Title Case
-)
-
-print("      ✅ Padronização aplicada: manufacturer/provider → Title Case, color → lowercase")
-
-# ----------------------------------------------------------------------------
-# 3.3 CONVERSÃO DE TIPOS E TIMESTAMPS
-# ----------------------------------------------------------------------------
-
-print("   🔹 3/4: Convertendo tipos e timestamps...")
-
-# Converter timestamps ISO para timestamp
-df_typed = df_clean.withColumn(
-    "timestamp",
-    F.to_timestamp(F.col("timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "static_extraction_timestamp",
-    F.to_timestamp(F.col("static_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "insurance_extraction_timestamp",
-    F.to_timestamp(F.col("insurance_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "engine_extraction_timestamp",
-    F.to_timestamp(F.col("engine_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "transmission_extraction_timestamp",
-    F.to_timestamp(F.col("transmission_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "brakes_extraction_timestamp",
-    F.to_timestamp(F.col("brakes_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "service_extraction_timestamp",
-    F.to_timestamp(F.col("service_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "trip_extraction_timestamp",
-    F.to_timestamp(F.col("trip_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "telemetry_extraction_timestamp",
-    F.to_timestamp(F.col("telemetry_extraction_timestamp"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "trip_start_time",
-    F.to_timestamp(F.col("trip_start_time"), "yyyy-MM-dd'T'HH:mm:ss'Z'")
-).withColumn(
-    "insurance_expiry_date",
-    F.to_date(F.col("insurance_expiry_date"), "yyyy-MM-dd")
-).withColumn(
-    "service_last_date",
-    F.to_date(F.col("service_last_date"), "yyyy-MM-dd")
-).withColumn(
-    "service_next_due",
-    F.to_date(F.col("service_next_due"), "yyyy-MM-dd")
-)
-
-print("      ✅ Timestamps e datas convertidos")
-
-# ----------------------------------------------------------------------------
-# 3.4 ENRIQUECIMENTO - KPIs Calculados (MANTENDO COMPATIBILIDADE)
-# ----------------------------------------------------------------------------
-
-print("   🔹 4/4: Calculando KPIs enriquecidos...")
-
-# KPIs de combustível e eficiência
-df_enriched = df_typed.withColumn(
-    "trip_km_per_liter",
-    F.when(
-        F.col("trip_fuel_consumed_liters") > 0,
-        F.round(F.col("trip_distance_km") / F.col("trip_fuel_consumed_liters"), 2)
-    ).otherwise(0.0)
-)
-
-# KPIs DE SEGURO (INSURANCE KPIs) - MANTIDOS PARA COMPATIBILIDADE
-df_with_insurance_kpis = df_enriched.withColumn(
-    "insurance_days_to_expiry",
-    F.datediff(F.col("insurance_expiry_date"), F.current_date())
-).withColumn(
-    "insurance_status",
-    F.when(F.col("insurance_days_to_expiry") < 0, "VENCIDO")
-     .when(F.col("insurance_days_to_expiry") <= 90, "VENCENDO_EM_90_DIAS")
-     .otherwise("ATIVO")
-).withColumn(
-    "insurance_days_expired",
-    F.when(F.col("insurance_days_to_expiry") < 0, F.abs(F.col("insurance_days_to_expiry")))
-     .otherwise(0)
-)
-
-print("      ✅ KPIs calculados: km_per_liter, insurance_status, insurance_days_expired")
-
-# Criar colunas de partição por data do evento (usando timestamp principal)
-df_silver_transformed = df_with_insurance_kpis.withColumn(
-    "event_year",
-    F.year(F.col("timestamp")).cast("string")
-).withColumn(
-    "event_month",
-    F.lpad(F.month(F.col("timestamp")).cast("string"), 2, "0")
-).withColumn(
-    "event_day",
-    F.lpad(F.dayofmonth(F.col("timestamp")).cast("string"), 2, "0")
-)
-
-print(f"      ✅ Total de colunas finais: {len(df_silver_transformed.columns)}")
-
-# ============================================================================
-# 4. CONSOLIDAÇÃO DE ESTADO ATUAL
-# ============================================================================
-
-print("\n🔄 ETAPA 3: Consolidação de estado atual por veículo...")
-
-# Window para ranking por odômetro (estado mais atual)
-window_current_state = Window.partitionBy("car_id").orderBy(F.desc("telemetry_odometer_km"))
-
-# Aplicar ranking e filtrar apenas o registro mais atual por veículo
-df_current_state = df_silver_transformed.withColumn(
-    "rank",
-    F.row_number().over(window_current_state)
-).filter(
-    F.col("rank") == 1
-).drop("rank")
-
-current_vehicles = df_current_state.count()
-print(f"   ✅ Veículos com estado atual consolidado: {current_vehicles}")
-
-# Mostrar estatísticas finais
-print("\n   📊 Estatísticas do estado atual:")
-df_current_state.select("car_id", "manufacturer", "model", "telemetry_odometer_km", "insurance_status").show(5, truncate=False)
-
-# ============================================================================
-# 5. ESCRITA NO BUCKET SILVER (DYNAMIC PARTITION OVERWRITE)
-# ============================================================================
-
-print("\n💾 ETAPA 4: Escrita no bucket Silver...")
-
-# Caminho de destino no Silver
-silver_output_path = f"s3://{args['silver_bucket']}/{args['silver_path']}"
-print(f"   Destino Silver: {silver_output_path}")
-
-# Escrever dados no formato Parquet com particionamento dinâmico
-df_current_state.write \
-    .mode("overwrite") \
-    .option("partitionOverwriteMode", "dynamic") \
-    .partitionBy("event_year", "event_month", "event_day") \
-    .parquet(silver_output_path)
-
-print(f"   ✅ Dados escritos com sucesso!")
-print(f"   📊 Partições: {df_current_state.select('event_year', 'event_month', 'event_day').distinct().count()}")
-
-# ============================================================================
-# 6. FINALIZAÇÃO
-# ============================================================================
-
-print("\n" + "=" * 80)
-print("🎉 JOB CONCLUÍDO COM SUCESSO!")
-print(f"   📊 Registros processados: {new_records_count}")
-print(f"   🚗 Veículos consolidados: {current_vehicles}")
-print(f"   📅 Finalizado em: {datetime.now().isoformat()}")
-print("=" * 80)
-
-# Commit do job (atualiza bookmarks se aplicável)
 job.commit()

@@ -31,6 +31,7 @@ from awsglue.dynamicframe import DynamicFrame
 
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, avg, sum, count, max, min, round
+from pyspark.sql.window import Window
 from datetime import datetime
 
 # ============================================================================
@@ -188,7 +189,7 @@ df_monthly_efficiency = df_with_efficiency.groupBy(
     # Ranking de eficiência por mês
     "efficiency_rank_in_month",
     F.row_number().over(
-        F.Window.partitionBy("trip_year", "trip_month")
+        Window.partitionBy("trip_year", "trip_month")
         .orderBy(col("avg_fuel_efficiency_l_per_100km").asc())
     )
 ).withColumn(

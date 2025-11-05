@@ -194,18 +194,23 @@ oil_alerts = df_base.filter(
 )
 
 # 5. SEGURO PRÓXIMO AO VENCIMENTO
-insurance_alerts = df_base.filter(
+insurance_alerts_temp = df_base.filter(
     datediff(to_date(col("insurance_valid_until")), current_date()) <= INSURANCE_WARNING_DAYS
 ).withColumn(
     "days_to_expiry", 
     datediff(to_date(col("insurance_valid_until")), current_date())
-).select(
-    "*",
-    lit("WARNING").alias("alert_severity"),
-    lit("INSURANCE_EXPIRY").alias("alert_type"),
-    F.concat(lit("Seguro vence em "), col("days_to_expiry"), lit(" dias")).alias("alert_message"),
-    col("days_to_expiry").alias("alert_value")
+).withColumn(
+    "alert_severity", lit("WARNING")
+).withColumn(
+    "alert_type", lit("INSURANCE_EXPIRY")
+).withColumn(
+    "alert_message", F.concat(lit("Seguro vence em "), col("days_to_expiry"), lit(" dias"))
+).withColumn(
+    "alert_value", col("days_to_expiry")
 )
+
+# Remover a coluna days_to_expiry para manter consistência no UNION
+insurance_alerts = insurance_alerts_temp.drop("days_to_expiry")
 
 # Unir todos os alertas
 all_alerts_df = battery_alerts.union(fuel_alerts) \

@@ -95,7 +95,7 @@ try:
     # Leitura incremental com transformation_ctx (habilita Job Bookmarks)
     dyf_silver_telemetry = glueContext.create_dynamic_frame.from_catalog(
         database=GLUE_DATABASE,
-        table_name="silver_car_telemetry",
+        table_name="silver_car_telemetry",  # VIEW com mapeamento de colunas (car_chassis → carChassis)
         transformation_ctx="read_silver_telemetry_incremental_slim"
     )
     
