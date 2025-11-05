@@ -168,6 +168,22 @@ resource "aws_glue_crawler" "bronze_car_data_crawler" {
   description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas."
   role          = aws_iam_role.glue_crawler_role.arn
   database_name = aws_glue_catalog_database.data_lake_database.name
+  
+  # NOTE: No table_prefix configured
+  # Glue Crawler table naming behavior:
+  # - Without table_prefix: infers table name from S3 path (e.g., "car_data" from s3://.../bronze/car_data/)
+  # - With table_prefix: concatenates prefix + inferred name (e.g., "bronze_" + "car_data" = "bronze_car_data")
+  # 
+  # EXPECTED TABLE NAME: "car_bronze"
+  # Since crawler cannot directly control the exact table name, the table "car_bronze" must be 
+  # created manually in the Glue Data Catalog before the first crawler run. The crawler will then
+  # UPDATE the existing table (add partitions, update schema) instead of creating a new one.
+  #
+  # Manual table creation required with:
+  # - Name: car_bronze
+  # - Schema: Parquet schema with nested structs (vehicle_static_info, vehicle_dynamic_state, etc.)
+  # - Partition keys: ingest_year, ingest_month, ingest_day
+  # - Location: s3://<bronze-bucket>/bronze/car_data/
 
   # Schedule - runs daily at midnight UTC to discover new partitions
   schedule = var.bronze_crawler_schedule
