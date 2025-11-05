@@ -182,15 +182,40 @@ df_silver_flattened = df_bronze.select(
 flattened_count = df_silver_flattened.count()
 print(f"   ✅ Registros após flattening: {flattened_count}")
 
+# ============================================================================
+# 3.5. DEDUPLICAÇÃO POR EVENT_ID
+# ============================================================================
+
+print("\n🔍 ETAPA 2.5: Aplicando deduplicação por event_id...")
+
+# Contar duplicatas antes
+total_before_dedup = df_silver_flattened.count()
+distinct_events = df_silver_flattened.select("event_id").distinct().count()
+duplicates_count = total_before_dedup - distinct_events
+
+if duplicates_count > 0:
+    print(f"   ⚠️  {duplicates_count} registros duplicados detectados")
+    
+# Aplicar deduplicação: manter o registro mais recente por event_id
+# Ordena por processing_timestamp DESC e pega o primeiro de cada event_id
+window_spec = Window.partitionBy("event_id").orderBy(F.col("processing_timestamp").desc())
+df_silver_flattened = df_silver_flattened.withColumn("row_num", F.row_number().over(window_spec)) \
+    .filter(F.col("row_num") == 1) \
+    .drop("row_num")
+
+# Contar após deduplicação
+deduplicated_count = df_silver_flattened.count()
+print(f"   ✅ Registros após deduplicação: {deduplicated_count} (removidos: {total_before_dedup - deduplicated_count})")
+
 # Mostrar schema Silver flattened
-print("\n   📊 Schema Silver (flattened):")
+print("\n   📊 Schema Silver (flattened & deduplicated):")
 df_silver_flattened.printSchema()
 
 # ============================================================================
 # 4. ENRIQUECIMENTO E KPIS DE SEGURO (COMPATÍVEL COM ESTRUTURA NOVA)
 # ============================================================================
 
-print("\n� ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
+print("\n🧪 ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
 
 # Enriquecer com KPIs de seguro para nova estrutura
 df_silver_enriched = df_silver_flattened.select(

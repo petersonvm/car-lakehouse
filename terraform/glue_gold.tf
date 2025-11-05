@@ -99,6 +99,7 @@ resource "aws_iam_role_policy" "gold_job_catalog_access" {
         ]
         Resource = [
           "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:catalog",
+          "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:database/default",
           "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_database.data_lake_database.name}",
           "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_database.data_lake_database.name}/*"
         ]
@@ -218,7 +219,7 @@ resource "aws_glue_job" "gold_car_current_state" {
     "--silver_table_name" = var.silver_table_name  # Adicionado para compatibilidade com script refactored
     "--gold_database"   = aws_glue_catalog_database.data_lake_database.name
     "--gold_bucket"     = aws_s3_bucket.data_lake["gold"].id
-    "--gold_path"       = "car_current_state"
+    "--gold_path"       = "gold_car_current_state_new"
     
     # Configurações Spark para otimização
     "--conf" = "spark.sql.sources.partitionOverwriteMode=static"
@@ -341,14 +342,14 @@ resource "aws_iam_role_policy" "gold_crawler_cloudwatch" {
 # Nota: O crawler irá atualizar/adicionar colunas automaticamente, mas definimos
 # o schema inicial para garantir que as novas colunas sejam reconhecidas
 resource "aws_glue_catalog_table" "gold_car_current_state" {
-  name          = "gold_car_current_state"
+  name          = "gold_car_current_state_new"
   database_name = aws_glue_catalog_database.data_lake_database.name
   description   = "Gold layer table - Car Current State with Insurance KPIs"
 
   table_type = "EXTERNAL_TABLE"
 
   storage_descriptor {
-    location      = "s3://${aws_s3_bucket.data_lake["gold"].id}/car_current_state/"
+    location      = "s3://${aws_s3_bucket.data_lake["gold"].id}/gold_car_current_state_new/"
     input_format  = "org.apache.hadoop.mapred.TextInputFormat"
     output_format = "org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat"
 
@@ -576,7 +577,7 @@ resource "aws_glue_crawler" "gold_car_current_state" {
   # schedule = ""
 
   s3_target {
-    path = "s3://${aws_s3_bucket.data_lake["gold"].id}/car_current_state/"
+    path = "s3://${aws_s3_bucket.data_lake["gold"].id}/gold_car_current_state_new/"
   }
 
   schema_change_policy {

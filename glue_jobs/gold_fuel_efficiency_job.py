@@ -17,15 +17,15 @@ BUSINESS LOGIC:
 INPUT:
     - Table: silver_car_telemetry
     - Incremental: Job Bookmarks track processed data
-    - Fields: carChassis, event_year, event_month, 
-              metrics_trip_tripMileage, metrics_trip_tripFuelLiters
+    - Fields: car_chassis, event_year, event_month, 
+              trip_distance_km, trip_fuel_consumed_liters
 
 OUTPUT:
     - Table: gold_fuel_efficiency_monthly
     - Path: s3://[GOLD_BUCKET]/fuel_efficiency_monthly/
     - Mode: OVERWRITE (full refresh of aggregation table)
     - Partitioning: event_year, event_month
-    - Fields: carChassis, event_year, event_month, 
+    - Fields: car_chassis, event_year, event_month, 
               total_mileage, total_fuel, last_updated
 
 INCREMENTAL PATTERN:
@@ -132,29 +132,29 @@ print("\n[STEP 2] Aggregating NEW data by car/month (delta aggregation)...")
 try:
     # Select required fields and filter nulls
     df_silver_prepared = df_silver_new.select(
-        "carChassis",
+        "car_chassis",
         "event_year",
         "event_month",
-        "metrics_trip_tripMileage",
-        "metrics_trip_tripFuelLiters"
+        "trip_distance_km",
+        "trip_fuel_consumed_liters"
     ).filter(
-        (F.col("carChassis").isNotNull()) &
+        (F.col("car_chassis").isNotNull()) &
         (F.col("event_year").isNotNull()) &
         (F.col("event_month").isNotNull()) &
-        (F.col("metrics_trip_tripMileage").isNotNull()) &
-        (F.col("metrics_trip_tripFuelLiters").isNotNull()) &
-        (F.col("metrics_trip_tripMileage") >= 0) &  # Sanity check
-        (F.col("metrics_trip_tripFuelLiters") >= 0)  # Sanity check
+        (F.col("trip_distance_km").isNotNull()) &
+        (F.col("trip_fuel_consumed_liters").isNotNull()) &
+        (F.col("trip_distance_km") >= 0) &  # Sanity check
+        (F.col("trip_fuel_consumed_liters") >= 0)  # Sanity check
     )
     
     # Aggregate NEW data (delta)
     df_delta = df_silver_prepared.groupBy(
-        "carChassis",
+        "car_chassis",
         "event_year",
         "event_month"
     ).agg(
-        F.sum("metrics_trip_tripMileage").alias("total_mileage_delta"),
-        F.sum("metrics_trip_tripFuelLiters").alias("total_fuel_delta")
+        F.sum("trip_distance_km").alias("total_mileage_delta"),
+        F.sum("trip_fuel_consumed_liters").alias("total_fuel_delta")
     )
     
     delta_records = df_delta.count()
@@ -192,7 +192,7 @@ try:
         
         # Rename columns to match delta naming for union
         df_gold_existing = df_gold_existing.select(
-            "carChassis",
+            "car_chassis",
             "event_year",
             "event_month",
             F.col("total_mileage").alias("total_mileage_delta"),
@@ -205,7 +205,7 @@ try:
         
         # Create empty DataFrame with same schema as delta
         schema = StructType([
-            StructField("carChassis", StringType(), nullable=False),
+            StructField("car_chassis", StringType(), nullable=False),
             StructField("event_year", StringType(), nullable=False),
             StructField("event_month", StringType(), nullable=False),
             StructField("total_mileage_delta", DoubleType(), nullable=True),
@@ -235,7 +235,7 @@ try:
     
     # Final aggregation - sum all deltas to get updated totals
     df_final = df_combined.groupBy(
-        "carChassis",
+        "car_chassis",
         "event_year",
         "event_month"
     ).agg(
@@ -267,7 +267,7 @@ try:
     # Statistics
     print("\n   Aggregation Statistics:")
     df_final.select(
-        F.count("carChassis").alias("unique_car_months"),
+        F.count("car_chassis").alias("unique_car_months"),
         F.sum("total_mileage").alias("total_km_all_cars"),
         F.sum("total_fuel").alias("total_fuel_all_cars"),
         F.avg("km_per_liter").alias("avg_efficiency")
