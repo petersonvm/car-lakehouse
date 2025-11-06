@@ -312,7 +312,7 @@ variable "glue_workflow_schedule" {
 variable "bronze_table_name" {
   description = "Name of the Bronze table in Glue Catalog"
   type        = string
-  default     = "car_bronze"
+  default     = "bronze_car_data"
 }
 
 variable "silver_table_name" {

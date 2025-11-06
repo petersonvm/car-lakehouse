@@ -168,7 +168,7 @@ resource "aws_glue_crawler" "bronze_car_data_crawler" {
   description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas. Uses existing table 'car_bronze'."
   role          = aws_iam_role.glue_crawler_role.arn
   database_name = aws_glue_catalog_database.data_lake_database.name
-  table_prefix  = ""  # Empty prefix - crawler will infer 'car_data' but update existing 'car_bronze' if it exists
+  table_prefix  = "bronze_"  # Prefix to create 'bronze_car_data' table (prevents 'car_data' duplication)
   
   # IMPORTANT: Crawler behavior with table_prefix = ""
   # - Crawler infers table name from S3 path: s3://.../bronze/car_data/ → "car_data"
