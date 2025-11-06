@@ -237,10 +237,7 @@ Tamanho Total: ~19 KB
 - **Role**: `datalake-pipeline-lambda-execution-role-dev`
 - **Status**: ✅ ATIVA (últimas execuções: 5 invocações)
 
-**Funções Legacy (INATIVAS):**
-- `datalake-pipeline-cleansing-dev` (substituída por Glue Job Silver)
-- `datalake-pipeline-analysis-dev` (substituída por Glue Jobs Gold)
-- `datalake-pipeline-compliance-dev` (não implementada)
+> **Nota**: Pipeline completamente migrado para AWS Glue. Processamento Bronze→Silver→Gold é feito por Glue Jobs.
 
 ### 7. 🔐 IAM Roles (4 roles)
 
