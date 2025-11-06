@@ -783,9 +783,46 @@ aws glue get-crawler-metrics --crawler-name-list datalake-pipeline-silver-crawle
 
 ---
 
-## 🗑️ Destruir Recursos
+## 🧹 Otimização de Infraestrutura
 
-Para remover todos os recursos criados:
+### Limpeza de Recursos Legados
+
+O pipeline atual contém ~10 recursos legados (órfãos de refatorações anteriores) que podem ser removidos para otimização de custos:
+
+**Recursos Identificados:**
+- 3 Lambdas não utilizadas (cleansing, analysis, compliance)
+- 2 Crawlers duplicados (gold_alerts_slim, gold_fuel_efficiency)
+- 1 IAM Role órfã + 3 policies associadas
+
+**Economia Estimada:** ~$0.50/mês + redução de 7% na complexidade do Terraform
+
+**Como Executar a Limpeza:**
+
+```bash
+# 1. Revisar plano detalhado
+cat docs/TERRAFORM_CLEANUP_PLAN.md
+
+# 2. Simular limpeza (DRY RUN - não faz alterações)
+.\scripts\cleanup_legacy_resources.ps1 -DryRun
+
+# 3. Executar limpeza REAL (com backup automático)
+.\scripts\cleanup_legacy_resources.ps1
+
+# 4. Validar pipeline após limpeza
+aws glue start-workflow-run --name datalake-pipeline-silver-gold-workflow-dev
+```
+
+**Documentação Completa:**
+- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: Plano detalhado de limpeza
+- **[scripts/cleanup_legacy_resources.ps1](./scripts/cleanup_legacy_resources.ps1)**: Script automatizado
+
+> **✅ Seguro**: Script inclui backup automático do Terraform state e modo DRY RUN para simulação.
+
+---
+
+## 🗑️ Destruir Recursos (Remover Tudo)
+
+Para remover **TODOS** os recursos criados:
 
 ```bash
 cd terraform
@@ -803,9 +840,11 @@ terraform destroy
 Para informações mais detalhadas, consulte:
 
 - **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)**: Comandos rápidos e referências
+- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: 🧹 Plano de limpeza de recursos legados
 - **[docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md](./docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md)**: Inventário completo detalhado
 - **[docs/reports/END_TO_END_TEST_REPORT.md](./docs/reports/END_TO_END_TEST_REPORT.md)**: Relatório de testes end-to-end
 - **[docs/reports/WORKFLOW_RECOVERY_GUIDE.md](./docs/reports/WORKFLOW_RECOVERY_GUIDE.md)**: Guia de recuperação do workflow
+- **[test_data/README.md](./test_data/README.md)**: 🧪 Guia de dados de teste
 
 ---
 
