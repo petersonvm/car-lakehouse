@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_f8f2f8e4-3e23-4d1e-be8a-e69d9e8701da",
+  "event_primary_timestamp": "2024-07-20T13:00:00Z",
+  "processing_timestamp": "2024-07-20T13:01:34Z",
+  "carChassis": "ZG7kc3iRu80HwsiwSD6VQGTK2cM64XXfHivboI6kkSp",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2024-07-20T13:00:47Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Civic",
+      "year": 2024,
+      "ModelYear": 2024,
+      "Manufacturer": "Honda",
+      "gasType": "Gas",
+      "fuelCapacityLiters": 61,
+      "color": "Blue"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2024-07-20T13:00:50Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "SafeAuto",
+        "policy_number": "INS-453498226",
+        "validUntil": "2027-01-17"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2024-07-20T13:00:51Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2024-05-26",
+        "last_service_mileage": 45,
+        "oil_life_percentage": 93.2
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2024-07-20T13:00:49Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-606685",
+      "customer_id": "CUST-9190",
+      "rental_start_date": "2024-07-05T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2024-07-20T12:59:54Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2024-07-20T11:45:00Z",
+        "tripEndTimestamp": "2024-07-20T13:00:00Z",
+        "tripMileage": 345.5,
+        "tripTimeMinutes": 75,
+        "tripFuelLiters": 5.6,
+        "tripMaxSpeedKm": 181
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2024-07-20T12:59:53Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 1763,
+        "fuelAvailableLiters": 53.1,
+        "engineTempCelsius": 95,
+        "oilTempCelsius": 124,
+        "batteryChargePerc": 26,
+        "tire_pressures_psi": {
+          "front_left": 34.5,
+          "front_right": 34.9,
+          "rear_left": 32.1,
+          "rear_right": 31.8
+        }
+      }
+    }
+  }
+}

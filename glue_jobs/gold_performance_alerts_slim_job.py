@@ -28,8 +28,8 @@ AWS GLUE ETL JOB: Gold Performance Alerts - SLIM (Optimized)
     3. SPEEDING_ALERT: tripMaxSpeedKm > 110 km/h
 
 📊 SCHEMA (SLIM):
-    ├── carChassis (string) - Identificador do veículo
-    ├── metrics_metricTimestamp (string) - Quando ocorreu
+    ├── car_chassis (string) - Identificador do veículo
+    ├── event_timestamp (string) - Quando ocorreu
     ├── alert_type (string) - Tipo do alerta
     ├── alert_value (double) - Valor que disparou o alerta
     ├── event_year (string) - Partição
@@ -118,9 +118,9 @@ print("\n🔍 STEP 2: Filtering performance violations...")
 try:
     # Filtrar apenas registros que violaram pelo menos 1 KPI
     df_alerts = df_silver.filter(
-        (col("metrics_engineTempCelsius") > 100) |
-        (col("metrics_oilTempCelsius") > 110) |
-        (col("metrics_trip_tripMaxSpeedKm") > 110)
+        (col("engine_temp_celsius") > 100) |
+        (col("oil_temp_celsius") > 110) |
+        (col("trip_max_speed_kmh") > 110)
     )
     
     alerts_count = df_alerts.count()
@@ -147,18 +147,18 @@ try:
     # Criar coluna alert_type (classificação do tipo de alerta)
     df_enriched = df_alerts.withColumn(
         "alert_type",
-        when(col("metrics_engineTempCelsius") > 100, lit("OVERHEAT_ENGINE"))
-        .when(col("metrics_oilTempCelsius") > 110, lit("OVERHEAT_OIL"))
-        .when(col("metrics_trip_tripMaxSpeedKm") > 110, lit("SPEEDING_ALERT"))
+        when(col("engine_temp_celsius") > 100, lit("OVERHEAT_ENGINE"))
+        .when(col("oil_temp_celsius") > 110, lit("OVERHEAT_OIL"))
+        .when(col("trip_max_speed_kmh") > 110, lit("SPEEDING_ALERT"))
         .otherwise(lit("UNKNOWN"))
     )
     
     # Criar coluna alert_value (captura o valor que disparou o alerta)
     df_enriched = df_enriched.withColumn(
         "alert_value",
-        when(col("metrics_engineTempCelsius") > 100, col("metrics_engineTempCelsius"))
-        .when(col("metrics_oilTempCelsius") > 110, col("metrics_oilTempCelsius"))
-        .when(col("metrics_trip_tripMaxSpeedKm") > 110, col("metrics_trip_tripMaxSpeedKm"))
+        when(col("engine_temp_celsius") > 100, col("engine_temp_celsius"))
+        .when(col("oil_temp_celsius") > 110, col("oil_temp_celsius"))
+        .when(col("trip_max_speed_kmh") > 110, col("trip_max_speed_kmh"))
         .otherwise(lit(None))
     )
     
@@ -185,8 +185,8 @@ try:
     # ⚠️ CRÍTICO: Selecionar APENAS as 7 colunas essenciais
     # Esta é a principal diferença vs. pipeline antigo (que tinha ~36 colunas)
     df_slim = df_enriched.select(
-        col("carChassis"),                      # Quem (identificador do veículo)
-        col("metrics_metricTimestamp"),         # Quando (timestamp do evento)
+        col("car_chassis"),                     # Quem (identificador do veículo)
+        col("event_timestamp"),                 # Quando (timestamp do evento)
         col("alert_type"),                      # O Quê (tipo do alerta)
         col("alert_value"),                     # Valor (valor que disparou)
         col("event_year"),                      # Partição 1

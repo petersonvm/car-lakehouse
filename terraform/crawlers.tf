@@ -3,13 +3,13 @@
 # ===================================================================
 # Silver Layer Crawler
 # ===================================================================
-resource "aws_glue_crawler" "car_silver_crawler" {
-  name          = "car_silver_crawler"
+resource "aws_glue_crawler" "silver_car_telemetry_crawler" {
+  name          = "silver_car_telemetry_crawler"
   database_name = aws_glue_catalog_database.data_lake_database.name
   role          = aws_iam_role.glue_crawler_role.arn
 
   s3_target {
-    path = "s3://${aws_s3_bucket.data_lake["silver"].bucket}/car_silver/"
+    path = "s3://${aws_s3_bucket.data_lake["silver"].bucket}/car_telemetry/"
   }
 
   schema_change_policy {

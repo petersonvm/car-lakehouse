@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_19741419-a82f-448b-8813-a1005acef34f",
+  "event_primary_timestamp": "2025-11-04T23:00:00Z",
+  "processing_timestamp": "2025-11-04T23:01:34Z",
+  "carChassis": "UBaFnBAsUtUkkitirhWDE10lbWXvbolKqPEX8bD1STU",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-11-04T23:00:39Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "HB20 Sedan",
+      "year": 2023,
+      "ModelYear": 2024,
+      "Manufacturer": "Hyundai",
+      "gasType": "Hybrid",
+      "fuelCapacityLiters": 50,
+      "color": "Black"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-11-04T23:00:42Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "Allianz",
+        "policy_number": "INS-263651838",
+        "validUntil": "2026-10-01"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-11-04T23:00:43Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2024-02-09",
+        "last_service_mileage": 40,
+        "oil_life_percentage": 80.0
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-11-04T23:00:41Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-854212",
+      "customer_id": "CUST-5961",
+      "rental_start_date": "2024-05-06T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-11-04T22:59:46Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-11-04T21:53:00Z",
+        "tripEndTimestamp": "2025-11-04T23:00:00Z",
+        "tripMileage": 584.0,
+        "tripTimeMinutes": 67,
+        "tripFuelLiters": 13.9,
+        "tripMaxSpeedKm": 60
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-11-04T22:59:45Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 9253,
+        "fuelAvailableLiters": 5.0,
+        "engineTempCelsius": 87,
+        "oilTempCelsius": 108,
+        "batteryChargePerc": 97,
+        "tire_pressures_psi": {
+          "front_left": 33.6,
+          "front_right": 32.1,
+          "rear_left": 33.1,
+          "rear_right": 32.6
+        }
+      }
+    }
+  }
+}

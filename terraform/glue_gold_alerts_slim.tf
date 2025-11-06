@@ -204,8 +204,8 @@ resource "aws_cloudwatch_log_group" "gold_alerts_slim_job_logs" {
 resource "aws_s3_object" "gold_alerts_slim_script" {
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "glue_jobs/gold_performance_alerts_slim_job.py"
-  source = "${path.module}/../glue_jobs/gold_performance_alerts_slim_job_refactored.py"  # Versão refatorada CORRIGIDA
-  etag   = filemd5("${path.module}/../glue_jobs/gold_performance_alerts_slim_job_refactored.py")
+  source = "${path.module}/../glue_jobs/gold_performance_alerts_slim_job.py"
+  etag   = filemd5("${path.module}/../glue_jobs/gold_performance_alerts_slim_job.py")
 
   tags = {
     Name  = "gold-performance-alerts-slim-script"
@@ -408,7 +408,7 @@ resource "aws_glue_trigger" "gold_alerts_slim_job_succeeded_start_crawler" {
   name          = "${var.project_name}-gold-alerts-slim-job-succeeded-start-crawler-${var.environment}"
   description   = "Trigger condicional: Quando Gold Alerts Slim Job SUCCEEDED, inicia Crawler automaticamente"
   type          = "CONDITIONAL"
-  workflow_name = aws_glue_workflow.silver_etl_workflow.name
+  workflow_name = aws_glue_workflow.silver_gold_pipeline.name
   enabled       = true
 
   actions {
@@ -427,7 +427,7 @@ resource "aws_glue_trigger" "gold_alerts_slim_job_succeeded_start_crawler" {
 
   tags = {
     Name     = "${var.project_name}-gold-alerts-slim-job-succeeded-trigger"
-    Workflow = aws_glue_workflow.silver_etl_workflow.name
+    Workflow = aws_glue_workflow.silver_gold_pipeline.name
   }
 }
 

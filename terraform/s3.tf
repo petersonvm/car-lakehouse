@@ -58,6 +58,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_lake" {
   rule {
     id     = "transition-and-expiration"
     status = "Enabled"
+    
+    filter {
+      prefix = ""
+    }
 
     transition {
       days          = each.value.lifecycle_rules.transition_to_glacier_days

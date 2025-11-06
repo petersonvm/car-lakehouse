@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_6e0ea5e2-2f9e-4025-accd-03e9b6f62575",
+  "event_primary_timestamp": "2025-11-04T12:00:00Z",
+  "processing_timestamp": "2025-11-04T12:01:57Z",
+  "carChassis": "HBDov4Vi118KW83eDye7ZD9HkySisuYe6zc68lGgFZG",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-11-04T12:00:30Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Versa",
+      "year": 2025,
+      "ModelYear": 2025,
+      "Manufacturer": "Nissan",
+      "gasType": "Electric",
+      "fuelCapacityLiters": 0,
+      "color": "Purple"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-11-04T12:00:33Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "Bradesco Seguros",
+        "policy_number": "INS-167964877",
+        "validUntil": "2027-05-21"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-11-04T12:00:34Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2023-10-19",
+        "last_service_mileage": 734,
+        "oil_life_percentage": 88.3
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-11-04T12:00:32Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-746880",
+      "customer_id": "CUST-8896",
+      "rental_start_date": "2024-03-21T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-11-04T11:59:37Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-11-04T10:45:00Z",
+        "tripEndTimestamp": "2025-11-04T12:00:00Z",
+        "tripMileage": 649.1,
+        "tripTimeMinutes": 75,
+        "tripFuelLiters": 0.0,
+        "tripMaxSpeedKm": 97
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-11-04T11:59:36Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 16266,
+        "fuelAvailableLiters": 0.0,
+        "engineTempCelsius": 89,
+        "oilTempCelsius": 94,
+        "batteryChargePerc": 89,
+        "tire_pressures_psi": {
+          "front_left": 31.9,
+          "front_right": 31.0,
+          "rear_left": 31.7,
+          "rear_right": 34.5
+        }
+      }
+    }
+  }
+}

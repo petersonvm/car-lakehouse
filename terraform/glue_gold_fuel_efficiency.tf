@@ -117,7 +117,7 @@ resource "aws_iam_role_policy" "gold_fuel_job_rw_gold" {
         ]
         Resource = [
           "${aws_s3_bucket.data_lake["gold"].arn}",
-          "${aws_s3_bucket.data_lake["gold"].arn}/fuel_efficiency_monthly/*"
+          "${aws_s3_bucket.data_lake["gold"].arn}/*"
         ]
       }
     ]
@@ -191,8 +191,8 @@ resource "aws_cloudwatch_log_group" "gold_fuel_job_logs" {
 resource "aws_s3_object" "gold_fuel_script" {
   bucket = aws_s3_bucket.glue_scripts.id
   key    = "glue_jobs/gold_fuel_efficiency_job.py"
-  source = "${path.module}/../glue_jobs/gold_fuel_efficiency_job_refactored.py"  # Versão refatorada CORRIGIDA
-  etag   = filemd5("${path.module}/../glue_jobs/gold_fuel_efficiency_job_refactored.py")
+  source = "${path.module}/../glue_jobs/gold_fuel_efficiency_job.py"
+  etag   = filemd5("${path.module}/../glue_jobs/gold_fuel_efficiency_job.py")
 
   tags = {
     Name  = "gold-fuel-efficiency-script"
@@ -391,7 +391,7 @@ resource "aws_glue_crawler" "gold_fuel_efficiency" {
 resource "aws_glue_trigger" "gold_fuel_job_succeeded_start_crawler" {
   name          = "${var.project_name}-gold-fuel-job-succeeded-start-crawler-${var.environment}"
   type          = "CONDITIONAL"
-  workflow_name = aws_glue_workflow.silver_etl_workflow.name
+  workflow_name = aws_glue_workflow.silver_gold_pipeline.name
   description   = "Trigger condicional: Quando Gold Fuel Efficiency Job SUCCEEDED, inicia Gold Fuel Efficiency Crawler automaticamente"
 
   actions {
@@ -410,7 +410,7 @@ resource "aws_glue_trigger" "gold_fuel_job_succeeded_start_crawler" {
 
   tags = {
     Name     = "${var.project_name}-gold-fuel-job-succeeded-trigger"
-    Workflow = aws_glue_workflow.silver_etl_workflow.name
+    Workflow = aws_glue_workflow.silver_gold_pipeline.name
   }
 }
 

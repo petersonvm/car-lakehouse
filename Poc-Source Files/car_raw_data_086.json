@@ -1,0 +1,79 @@
+{
+  "event_id": "evt_f4acc7ed-4f9b-4c86-a99c-42a03642b221",
+  "event_primary_timestamp": "2025-05-07T04:00:00Z",
+  "processing_timestamp": "2025-05-07T04:01:51Z",
+  "carChassis": "bgLUjElBvaoOzp4pnzQ4KP35vSHUjhwQibcDab5stSB",
+  "vehicle_static_info": {
+    "extraction_timestamp": "2025-05-07T04:00:38Z",
+    "source_system": "fleet_db",
+    "data": {
+      "Model": "Strada",
+      "year": 2025,
+      "ModelYear": 2026,
+      "Manufacturer": "Fiat",
+      "gasType": "Flex",
+      "fuelCapacityLiters": 64,
+      "color": "Red"
+    }
+  },
+  "vehicle_dynamic_state": {
+    "insurance_info": {
+      "extraction_timestamp": "2025-05-07T04:00:41Z",
+      "source_system": "insurance_api",
+      "data": {
+        "provider": "SafeAuto",
+        "policy_number": "INS-428919720",
+        "validUntil": "2027-09-24"
+      }
+    },
+    "maintenance_info": {
+      "extraction_timestamp": "2025-05-07T04:00:42Z",
+      "source_system": "service_db",
+      "data": {
+        "last_service_date": "2025-01-21",
+        "last_service_mileage": 0,
+        "oil_life_percentage": 64.9
+      }
+    }
+  },
+  "current_rental_agreement": {
+    "extraction_timestamp": "2025-05-07T04:00:40Z",
+    "source_system": "rental_ops_db",
+    "data": {
+      "agreement_id": "RENT-666917",
+      "customer_id": "CUST-4710",
+      "rental_start_date": "2025-04-03T00:00:00Z"
+    }
+  },
+  "trip_data": {
+    "trip_summary": {
+      "extraction_timestamp": "2025-05-07T03:59:45Z",
+      "source_system": "trip_computer",
+      "data": {
+        "tripStartTimestamp": "2025-05-07T00:25:00Z",
+        "tripEndTimestamp": "2025-05-07T04:00:00Z",
+        "tripMileage": 89.6,
+        "tripTimeMinutes": 215,
+        "tripFuelLiters": 14.5,
+        "tripMaxSpeedKm": 103
+      }
+    },
+    "vehicle_telemetry_snapshot": {
+      "extraction_timestamp": "2025-05-07T03:59:44Z",
+      "source_system": "can_bus_poller",
+      "data": {
+        "currentMileage": 137,
+        "fuelAvailableLiters": 42.3,
+        "engineTempCelsius": 96,
+        "oilTempCelsius": 97,
+        "batteryChargePerc": 37,
+        "tire_pressures_psi": {
+          "front_left": 31.9,
+          "front_right": 33.8,
+          "rear_left": 30.0,
+          "rear_right": 34.2
+        }
+      }
+    }
+  }
+}

@@ -4,12 +4,12 @@ AWS Glue ETL Job - Gold Layer: Car Current State
 
 Objetivo:
 - Ler dados consolidados da Camada Silver (histórico completo)
-- Aplicar lógica de "Estado Atual" (1 linha por carChassis)
+- Aplicar lógica de "Estado Atual" (1 linha por car_chassis)
 - Escrever snapshot no Gold Bucket (sobrescrita total)
 
 Lógica de Negócio:
-- Chave de negócio: carChassis
-- Regra de seleção: currentMileage DESC (o maior = mais recente)
+- Chave de negócio: car_chassis
+- Regra de seleção: current_mileage_km DESC (o maior = mais recente)
 - Resultado: 1 registro único por veículo (estado atual)
 
 Características:
@@ -107,9 +107,9 @@ else:
     # Mostrar amostra dos dados Silver
     print("\n   📋 Amostra de dados Silver (primeiros 5 registros):")
     df_silver.select(
-        "carChassis",
-        "currentMileage",
-        "metrics_metricTimestamp",
+        "car_chassis",
+        "current_mileage_km",
+        "telemetry_timestamp",
         "event_year",
         "event_month",
         "event_day"
@@ -124,14 +124,14 @@ else:
     print("=" * 80)
 
     print("\n   🎯 Regra de Negócio:")
-    print("      - 1 registro por carChassis (veículo)")
-    print("      - Critério: MAIOR currentMileage (mais recente)")
+    print("      - 1 registro por car_chassis (veículo)")
+    print("      - Critério: MAIOR current_mileage_km (mais recente)")
     print("      - Método: Window Function com row_number()")
 
     # Definir Window Specification
-    # Particionar por: carChassis (cada veículo)
-    # Ordenar por: currentMileage DESC (maior milhagem = mais recente)
-    window_spec = Window.partitionBy("carChassis").orderBy(F.col("currentMileage").desc())
+    # Particionar por: car_chassis (cada veículo)
+    # Ordenar por: current_mileage_km DESC (maior milhagem = mais recente)
+    window_spec = Window.partitionBy("car_chassis").orderBy(F.col("current_mileage_km").desc())
 
     print("\n   🔹 Aplicando Window Function...")
 
@@ -167,7 +167,7 @@ else:
     print("      1. insurance_status (String): VENCIDO | VENCENDO_EM_90_DIAS | ATIVO")
     print("      2. insurance_days_expired (Int): Dias desde vencimento (null se ativo)")
     print("\n   📊 Lógica de Negócio:")
-    print("      - Fonte: carInsurance_validUntil (campo achatado do Silver)")
+    print("      - Fonte: insurance_valid_until (campo achatado do Silver)")
     print("      - Referência: current_date() no momento da execução")
     print("      - VENCIDO: validUntil < current_date")
     print("      - VENCENDO_EM_90_DIAS: 0 <= days_remaining <= 90")
@@ -177,8 +177,8 @@ else:
 
     # Definir colunas de data
     current_date_col = current_date()
-    # Campo achatado do Silver: carInsurance_validUntil (formato: "2026-10-29")
-    valid_until_date_col = to_date(col("carInsurance_validUntil"), "yyyy-MM-dd")
+    # Campo achatado do Silver: insurance_valid_until (formato: "2026-10-29")
+    valid_until_date_col = to_date(col("insurance_valid_until"), "yyyy-MM-dd")
 
     # Calcular diferença em dias
     # datediff(end_date, start_date) -> Positivo se end_date > start_date
@@ -189,7 +189,7 @@ else:
 
     print("      ✅ Colunas de data configuradas")
     print("         - current_date: Data de execução do job")
-    print("         - valid_until: carInsurance_validUntil convertido para date")
+    print("         - valid_until: insurance_valid_until convertido para date")
     print("         - days_diff: Diferença em dias (positivo = restantes, negativo = vencidos)")
 
     # Enriquecer DataFrame com KPIs de seguro
@@ -214,13 +214,13 @@ else:
     # Mostrar amostra com os novos campos
     print("\n   📋 Amostra de dados com KPIs de Seguro:")
     df_enriched.select(
-        "carChassis",
-        "Manufacturer",
-        "Model",
-        "carInsurance_validUntil",
+        "car_chassis",
+        "manufacturer",
+        "model",
+        "insurance_valid_until",
         "insurance_status",
         "insurance_days_expired"
-    ).orderBy(F.col("currentMileage").desc()).show(5, truncate=False)
+    ).orderBy(F.col("current_mileage_km").desc()).show(5, truncate=False)
 
     # ============================================================================
     # 5. ENRIQUECIMENTO ADICIONAL (METADADOS GOLD)
@@ -247,20 +247,20 @@ else:
     print("\n   📊 Estatísticas do Estado Atual:")
     
     # Contar veículos por fabricante
-    manufacturer_stats = df_gold.groupBy("Manufacturer").count().orderBy(F.col("count").desc())
+    manufacturer_stats = df_gold.groupBy("manufacturer").count().orderBy(F.col("count").desc())
     print("\n   🏭 Veículos por Fabricante:")
     manufacturer_stats.show(10, truncate=False)
 
     # Mostrar amostra dos dados Gold finais
     print("\n   📋 Amostra de dados Gold (estado atual - primeiros 5 veículos):")
     df_gold.select(
-        "carChassis",
-        "Manufacturer",
-        "Model",
-        "currentMileage",
-        "metrics_metricTimestamp",
+        "car_chassis",
+        "manufacturer",
+        "model",
+        "current_mileage_km",
+        "telemetry_timestamp",
         "gold_processing_timestamp"
-    ).orderBy(F.col("currentMileage").desc()).show(5, truncate=False)
+    ).orderBy(F.col("current_mileage_km").desc()).show(5, truncate=False)
 
     # ============================================================================
     # 6. ESCRITA NO GOLD BUCKET (OVERWRITE COMPLETO)

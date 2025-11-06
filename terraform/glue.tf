@@ -165,9 +165,25 @@ resource "aws_iam_role_policy" "glue_cloudwatch_policy" {
 
 resource "aws_glue_crawler" "bronze_car_data_crawler" {
   name          = "${var.project_name}-bronze-car-data-crawler-${var.environment}"
-  description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas."
+  description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas. Uses existing table 'car_bronze'."
   role          = aws_iam_role.glue_crawler_role.arn
   database_name = aws_glue_catalog_database.data_lake_database.name
+  table_prefix  = "bronze_"  # Prefix to create 'bronze_car_data' table (prevents 'car_data' duplication)
+  
+  # IMPORTANT: Crawler behavior with table_prefix = ""
+  # - Crawler infers table name from S3 path: s3://.../bronze/car_data/ → "car_data"
+  # - If table "car_bronze" already exists in catalog, crawler will UPDATE it (not create new)
+  # - To prevent duplicate table creation:
+  #   1. Ensure 'car_bronze' table exists before crawler runs
+  #   2. Manually delete any 'car_data' table created by previous crawler runs
+  #   3. Crawler will then update only 'car_bronze'
+  #
+  # The table 'car_bronze' must exist before the first crawler run.
+  # It's created manually or via separate Terraform resource with:
+  # - Name: car_bronze
+  # - Schema: Parquet schema with nested structs (vehicle_static_info, vehicle_dynamic_state, etc.)
+  # - Partition keys: ingest_year, ingest_month, ingest_day
+  # - Location: s3://<bronze-bucket>/bronze/car_data/
 
   # Schedule - runs daily at midnight UTC to discover new partitions
   schedule = var.bronze_crawler_schedule
@@ -200,31 +216,9 @@ resource "aws_glue_crawler" "bronze_car_data_crawler" {
     recrawl_behavior = "CRAWL_EVERYTHING"
   }
 
-  # Table prefix to distinguish Bronze tables
-  table_prefix = "bronze_"
-
-  # Configuration for Parquet with nested structures
-  configuration = jsonencode({
-    Version = 1.0
-    CrawlerOutput = {
-      # Partition handling - Hive-style (ingest_year/ingest_month/ingest_day)
-      Partitions = {
-        # Inherit partition structure from existing table definition
-        AddOrUpdateBehavior = "InheritFromTable"
-      }
-      # Schema handling - critical for struct columns
-      Tables = {
-        # MergeNewColumns: Add new columns or struct fields without removing existing ones
-        # Essential for schema evolution with nested structures
-        AddOrUpdateBehavior = "MergeNewColumns"
-      }
-    }
-    # Grouping policy - combine tables with compatible schemas
-    Grouping = {
-      TableGroupingPolicy = "CombineCompatibleSchemas"
-      TableLevelConfiguration = 4  # Moderate grouping level
-    }
-  })
+  # CONFIGURATION REMOVED: Crawler will use default behavior
+  # Default behavior should create/update car_bronze table only (not partition-level tables)
+  # The explicit table_prefix = "" above ensures no prefix is added
 
   tags = merge(
     local.common_tags,
