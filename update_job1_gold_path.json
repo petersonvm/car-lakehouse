@@ -1,8 +1,0 @@
-{
-  "JobName": "datalake-pipeline-gold-car-current-state-dev",
-  "JobUpdate": {
-    "DefaultArguments": {
-      "--gold_path": "gold_car_current_state_new"
-    }
-  }
-}
