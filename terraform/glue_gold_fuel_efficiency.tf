@@ -117,7 +117,7 @@ resource "aws_iam_role_policy" "gold_fuel_job_rw_gold" {
         ]
         Resource = [
           "${aws_s3_bucket.data_lake["gold"].arn}",
-          "${aws_s3_bucket.data_lake["gold"].arn}/fuel_efficiency_monthly/*"
+          "${aws_s3_bucket.data_lake["gold"].arn}/*"
         ]
       }
     ]
