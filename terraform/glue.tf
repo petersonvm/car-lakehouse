@@ -216,28 +216,9 @@ resource "aws_glue_crawler" "bronze_car_data_crawler" {
     recrawl_behavior = "CRAWL_EVERYTHING"
   }
 
-  # Configuration for Parquet with nested structures
-  configuration = jsonencode({
-    Version = 1.0
-    CrawlerOutput = {
-      # Partition handling - Hive-style (ingest_year/ingest_month/ingest_day)
-      Partitions = {
-        # Inherit partition structure from existing table definition
-        AddOrUpdateBehavior = "InheritFromTable"
-      }
-      # Schema handling - critical for struct columns
-      Tables = {
-        # MergeNewColumns: Add new columns or struct fields without removing existing ones
-        # Essential for schema evolution with nested structures
-        AddOrUpdateBehavior = "MergeNewColumns"
-      }
-    }
-    # Grouping policy - combine tables with compatible schemas
-    Grouping = {
-      TableGroupingPolicy = "CombineCompatibleSchemas"
-      TableLevelConfiguration = 4  # Moderate grouping level
-    }
-  })
+  # CONFIGURATION REMOVED: Crawler will use default behavior
+  # Default behavior should create/update car_bronze table only (not partition-level tables)
+  # The explicit table_prefix = "" above ensures no prefix is added
 
   tags = merge(
     local.common_tags,
