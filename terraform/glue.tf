@@ -165,21 +165,21 @@ resource "aws_iam_role_policy" "glue_cloudwatch_policy" {
 
 resource "aws_glue_crawler" "bronze_car_data_crawler" {
   name          = "${var.project_name}-bronze-car-data-crawler-${var.environment}"
-  description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas."
+  description   = "Crawler for Bronze layer car_data with nested structures (structs). Discovers partitioned Parquet files with preserved JSON schemas. Uses existing table 'car_bronze'."
   role          = aws_iam_role.glue_crawler_role.arn
   database_name = aws_glue_catalog_database.data_lake_database.name
+  table_prefix  = ""  # Empty prefix - crawler will infer 'car_data' but update existing 'car_bronze' if it exists
   
-  # NOTE: No table_prefix configured
-  # Glue Crawler table naming behavior:
-  # - Without table_prefix: infers table name from S3 path (e.g., "car_data" from s3://.../bronze/car_data/)
-  # - With table_prefix: concatenates prefix + inferred name (e.g., "bronze_" + "car_data" = "bronze_car_data")
-  # 
-  # EXPECTED TABLE NAME: "car_bronze"
-  # Since crawler cannot directly control the exact table name, the table "car_bronze" must be 
-  # created manually in the Glue Data Catalog before the first crawler run. The crawler will then
-  # UPDATE the existing table (add partitions, update schema) instead of creating a new one.
+  # IMPORTANT: Crawler behavior with table_prefix = ""
+  # - Crawler infers table name from S3 path: s3://.../bronze/car_data/ → "car_data"
+  # - If table "car_bronze" already exists in catalog, crawler will UPDATE it (not create new)
+  # - To prevent duplicate table creation:
+  #   1. Ensure 'car_bronze' table exists before crawler runs
+  #   2. Manually delete any 'car_data' table created by previous crawler runs
+  #   3. Crawler will then update only 'car_bronze'
   #
-  # Manual table creation required with:
+  # The table 'car_bronze' must exist before the first crawler run.
+  # It's created manually or via separate Terraform resource with:
   # - Name: car_bronze
   # - Schema: Parquet schema with nested structs (vehicle_static_info, vehicle_dynamic_state, etc.)
   # - Partition keys: ingest_year, ingest_month, ingest_day

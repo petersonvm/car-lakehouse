@@ -375,7 +375,7 @@ resource "aws_glue_crawler" "gold_performance_alerts" {
 resource "aws_glue_trigger" "gold_alerts_job_succeeded_start_crawler" {
   name          = "${var.project_name}-gold-alerts-job-succeeded-start-crawler-${var.environment}"
   type          = "CONDITIONAL"
-  workflow_name = aws_glue_workflow.silver_etl_workflow.name
+  workflow_name = aws_glue_workflow.silver_gold_pipeline.name
   description   = "Trigger condicional: Quando Gold Alerts Job SUCCEEDED, inicia Gold Alerts Crawler automaticamente"
 
   predicate {
@@ -394,7 +394,7 @@ resource "aws_glue_trigger" "gold_alerts_job_succeeded_start_crawler" {
 
   tags = {
     Name = "${var.project_name}-gold-alerts-job-succeeded-trigger"
-    Workflow = aws_glue_workflow.silver_etl_workflow.name
+    Workflow = aws_glue_workflow.silver_gold_pipeline.name
   }
 }
 

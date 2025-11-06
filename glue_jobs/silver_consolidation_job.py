@@ -197,11 +197,20 @@ if duplicates_count > 0:
     print(f"   ⚠️  {duplicates_count} registros duplicados detectados")
     
 # Aplicar deduplicação: manter o registro mais recente por event_id
-# Ordena por processing_timestamp DESC e pega o primeiro de cada event_id
-window_spec = Window.partitionBy("event_id").orderBy(F.col("processing_timestamp").desc())
+# Ordena por event_timestamp DESC (principal) e processing_timestamp DESC (desempate)
+# Isso garante que mantemos o evento com timestamp mais recente e, em caso de empate,
+# aquele que foi processado mais recentemente
+window_spec = Window.partitionBy("event_id").orderBy(
+    F.col("event_timestamp").desc(),
+    F.col("processing_timestamp").desc()
+)
 df_silver_flattened = df_silver_flattened.withColumn("row_num", F.row_number().over(window_spec)) \
     .filter(F.col("row_num") == 1) \
     .drop("row_num")
+
+# Aplicar DISTINCT para remover duplicatas 100% idênticas (edge case)
+# Quando todos os campos são iguais, o row_number não é determinístico
+df_silver_flattened = df_silver_flattened.distinct()
 
 # Contar após deduplicação
 deduplicated_count = df_silver_flattened.count()

@@ -77,6 +77,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "glue_temp" {
   rule {
     id     = "delete-temp-files"
     status = "Enabled"
+    
+    filter {
+      prefix = ""
+    }
 
     expiration {
       days = 7

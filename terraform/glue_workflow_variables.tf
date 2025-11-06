@@ -2,17 +2,7 @@
 # Variáveis Terraform - AWS Glue Workflow
 # ================================================================================
 
-variable "aws_region" {
-  description = "Região AWS para deployment"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "environment" {
-  description = "Ambiente de deployment (dev, staging, prod)"
-  type        = string
-  default     = "dev"
-}
+# NOTA: aws_region e environment estão definidos em variables.tf
 
 # ================================================================================
 # WORKFLOW CONFIGURATION
@@ -102,7 +92,7 @@ variable "gold_performance_alerts_slim_job_name" {
 variable "silver_crawler_name" {
   description = "Nome do crawler Silver silver_car_telemetry"
   type        = string
-  default     = "datalake-pipeline-silver-car-crawler-dev"
+  default     = "datalake-pipeline-silver-crawler-dev"
 }
 
 variable "gold_car_current_state_crawler_name" {
@@ -127,13 +117,5 @@ variable "gold_performance_alerts_slim_crawler_name" {
 # TAGS CONFIGURATION
 # ================================================================================
 
-variable "common_tags" {
-  description = "Tags comuns para todos os recursos"
-  type        = map(string)
-  default = {
-    Project     = "datalake-pipeline"
-    ManagedBy   = "Terraform"
-    Component   = "workflow"
-    CostCenter  = "data-engineering"
-  }
-}
+# NOTA: common_tags está definido em variables.tf
+
