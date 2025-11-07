@@ -23,32 +23,32 @@ Write-Host ""
 # FUNÇÃO: VALIDAR PREREQUISITOS
 # ===================================================================
 function Test-Prerequisites {
-    Write-Host "⚙️  Validando pré-requisitos..." -ForegroundColor Yellow
+    Write-Host "  Validando pré-requisitos..." -ForegroundColor Yellow
     
     # Verificar AWS CLI
     try {
         $awsVersion = aws --version 2>&1
-        Write-Host "  ✅ AWS CLI instalado: $awsVersion" -ForegroundColor Green
+        Write-Host "   AWS CLI instalado: $awsVersion" -ForegroundColor Green
     } catch {
-        Write-Host "  ❌ AWS CLI não encontrado. Instale antes de continuar." -ForegroundColor Red
+        Write-Host "   AWS CLI não encontrado. Instale antes de continuar." -ForegroundColor Red
         exit 1
     }
     
     # Verificar Terraform
     try {
         $tfVersion = terraform version -json | ConvertFrom-Json
-        Write-Host "  ✅ Terraform instalado: $($tfVersion.terraform_version)" -ForegroundColor Green
+        Write-Host "   Terraform instalado: $($tfVersion.terraform_version)" -ForegroundColor Green
     } catch {
-        Write-Host "  ❌ Terraform não encontrado. Instale antes de continuar." -ForegroundColor Red
+        Write-Host "   Terraform não encontrado. Instale antes de continuar." -ForegroundColor Red
         exit 1
     }
     
     # Verificar credenciais AWS
     try {
         $identity = aws sts get-caller-identity 2>&1 | ConvertFrom-Json
-        Write-Host "  ✅ Credenciais AWS configuradas: $($identity.UserId)" -ForegroundColor Green
+        Write-Host "   Credenciais AWS configuradas: $($identity.UserId)" -ForegroundColor Green
     } catch {
-        Write-Host "  ❌ Credenciais AWS inválidas. Configure via 'aws configure'." -ForegroundColor Red
+        Write-Host "   Credenciais AWS inválidas. Configure via 'aws configure'." -ForegroundColor Red
         exit 1
     }
     
@@ -59,19 +59,19 @@ function Test-Prerequisites {
 # FUNÇÃO: VERIFICAR STATUS DO WORKFLOW NA AWS
 # ===================================================================
 function Get-WorkflowStatus {
-    Write-Host "🔍 Verificando status do workflow na AWS..." -ForegroundColor Yellow
+    Write-Host " Verificando status do workflow na AWS..." -ForegroundColor Yellow
     
     try {
         $workflow = aws glue get-workflow --name $WORKFLOW_NAME --region $AWS_REGION 2>&1 | ConvertFrom-Json
         
         if ($workflow.Workflow) {
-            Write-Host "  ✅ Workflow existe: $WORKFLOW_NAME" -ForegroundColor Green
+            Write-Host "   Workflow existe: $WORKFLOW_NAME" -ForegroundColor Green
             
             # Contar triggers
             $triggers = aws glue get-workflow --name $WORKFLOW_NAME --region $AWS_REGION `
                 --query "Workflow.Graph.Nodes[?Type=='TRIGGER'].Name" --output json | ConvertFrom-Json
             
-            Write-Host "  📊 Triggers encontrados: $($triggers.Count)" -ForegroundColor Cyan
+            Write-Host "   Triggers encontrados: $($triggers.Count)" -ForegroundColor Cyan
             
             # Listar triggers
             foreach ($trigger in $triggers) {
@@ -81,7 +81,7 @@ function Get-WorkflowStatus {
             return $triggers.Count
         }
     } catch {
-        Write-Host "  ❌ Workflow não encontrado na AWS" -ForegroundColor Red
+        Write-Host "   Workflow não encontrado na AWS" -ForegroundColor Red
         return 0
     }
     
@@ -92,7 +92,7 @@ function Get-WorkflowStatus {
 # FUNÇÃO: LISTAR RECURSOS LEGADOS EXISTENTES
 # ===================================================================
 function Get-LegacyResources {
-    Write-Host "🗑️  Verificando recursos legados..." -ForegroundColor Yellow
+    Write-Host "  Verificando recursos legados..." -ForegroundColor Yellow
     
     # Crawlers legados
     $legacyCrawlers = @(
@@ -110,7 +110,7 @@ function Get-LegacyResources {
             aws glue get-crawler --name $crawler --region $AWS_REGION 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $existingCrawlers += $crawler
-                Write-Host "  ⚠️  Crawler legado encontrado: $crawler" -ForegroundColor Yellow
+                Write-Host "    Crawler legado encontrado: $crawler" -ForegroundColor Yellow
             }
         } catch {}
     }
@@ -128,7 +128,7 @@ function Get-LegacyResources {
             aws lambda get-function --function-name $lambda --region $AWS_REGION 2>&1 | Out-Null
             if ($LASTEXITCODE -eq 0) {
                 $existingLambdas += $lambda
-                Write-Host "  ⚠️  Lambda legada encontrada: $lambda" -ForegroundColor Yellow
+                Write-Host "    Lambda legada encontrada: $lambda" -ForegroundColor Yellow
             }
         } catch {}
     }
@@ -138,7 +138,7 @@ function Get-LegacyResources {
     try {
         aws glue get-job --job-name $legacyJob --region $AWS_REGION 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "  ⚠️  Job legado encontrado: $legacyJob" -ForegroundColor Yellow
+            Write-Host "    Job legado encontrado: $legacyJob" -ForegroundColor Yellow
         }
     } catch {}
     
@@ -160,7 +160,7 @@ function Invoke-WorkflowTriggers {
     Write-Host "=====================================================================" -ForegroundColor Cyan
     Write-Host ""
     
-    Write-Host "📋 Triggers a serem criados:" -ForegroundColor Yellow
+    Write-Host " Triggers a serem criados:" -ForegroundColor Yellow
     Write-Host "  1. trigger-gold-current-state-to-crawler" -ForegroundColor Gray
     Write-Host "  2. trigger-gold-fuel-efficiency-to-crawler" -ForegroundColor Gray
     Write-Host "  3. trigger-gold-alerts-to-crawler" -ForegroundColor Gray
@@ -168,12 +168,12 @@ function Invoke-WorkflowTriggers {
     
     $confirm = Read-Host "Deseja prosseguir? (S/N)"
     if ($confirm -ne "S" -and $confirm -ne "s") {
-        Write-Host "❌ Operação cancelada pelo usuário." -ForegroundColor Red
+        Write-Host " Operação cancelada pelo usuário." -ForegroundColor Red
         return $false
     }
     
     Write-Host ""
-    Write-Host "🚀 Executando terraform plan..." -ForegroundColor Cyan
+    Write-Host " Executando terraform plan..." -ForegroundColor Cyan
     
     Set-Location $TERRAFORM_DIR
     
@@ -183,19 +183,19 @@ function Invoke-WorkflowTriggers {
         -target=aws_glue_trigger.trigger_gold_alerts_to_crawler
     
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ Terraform plan falhou. Verifique os erros acima." -ForegroundColor Red
+        Write-Host " Terraform plan falhou. Verifique os erros acima." -ForegroundColor Red
         return $false
     }
     
     Write-Host ""
     $confirm = Read-Host "Plan validado. Executar terraform apply? (S/N)"
     if ($confirm -ne "S" -and $confirm -ne "s") {
-        Write-Host "❌ Operação cancelada pelo usuário." -ForegroundColor Red
+        Write-Host " Operação cancelada pelo usuário." -ForegroundColor Red
         return $false
     }
     
     Write-Host ""
-    Write-Host "🚀 Executando terraform apply..." -ForegroundColor Cyan
+    Write-Host " Executando terraform apply..." -ForegroundColor Cyan
     
     terraform apply -auto-approve `
         -target=aws_glue_trigger.trigger_gold_current_state_to_crawler `
@@ -203,10 +203,10 @@ function Invoke-WorkflowTriggers {
         -target=aws_glue_trigger.trigger_gold_alerts_to_crawler
     
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ Triggers criados com sucesso!" -ForegroundColor Green
+        Write-Host " Triggers criados com sucesso!" -ForegroundColor Green
         return $true
     } else {
-        Write-Host "❌ Terraform apply falhou." -ForegroundColor Red
+        Write-Host " Terraform apply falhou." -ForegroundColor Red
         return $false
     }
 }
@@ -225,23 +225,23 @@ function Invoke-Cleanup {
     Write-Host "=====================================================================" -ForegroundColor Cyan
     Write-Host ""
     
-    Write-Host "🗑️  Recursos marcados para remoção:" -ForegroundColor Yellow
-    Write-Host "  📂 Crawlers: $($LegacyResources.Crawlers.Count)" -ForegroundColor Gray
+    Write-Host "  Recursos marcados para remoção:" -ForegroundColor Yellow
+    Write-Host "   Crawlers: $($LegacyResources.Crawlers.Count)" -ForegroundColor Gray
     Write-Host "  λ  Lambdas: $($LegacyResources.Lambdas.Count)" -ForegroundColor Gray
-    Write-Host "  🔧 Jobs: $($LegacyResources.Jobs.Count)" -ForegroundColor Gray
-    Write-Host "  📊 Total: $($LegacyResources.Total)" -ForegroundColor Gray
+    Write-Host "   Jobs: $($LegacyResources.Jobs.Count)" -ForegroundColor Gray
+    Write-Host "   Total: $($LegacyResources.Total)" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "💰 Economia estimada: $15-20/mês" -ForegroundColor Green
+    Write-Host " Economia estimada: $15-20/mês" -ForegroundColor Green
     Write-Host ""
     
-    $confirm = Read-Host "⚠️  ATENÇÃO: Esta operação é IRREVERSÍVEL. Confirmar remoção? (S/N)"
+    $confirm = Read-Host "  ATENÇÃO: Esta operação é IRREVERSÍVEL. Confirmar remoção? (S/N)"
     if ($confirm -ne "S" -and $confirm -ne "s") {
-        Write-Host "❌ Operação cancelada pelo usuário." -ForegroundColor Red
+        Write-Host " Operação cancelada pelo usuário." -ForegroundColor Red
         return $false
     }
     
     Write-Host ""
-    Write-Host "🚀 Executando terraform apply para cleanup..." -ForegroundColor Cyan
+    Write-Host " Executando terraform apply para cleanup..." -ForegroundColor Cyan
     
     Set-Location $TERRAFORM_DIR
     
@@ -258,10 +258,10 @@ function Invoke-Cleanup {
         -target=null_resource.cleanup_job_performance_alerts
     
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ Cleanup executado com sucesso!" -ForegroundColor Green
+        Write-Host " Cleanup executado com sucesso!" -ForegroundColor Green
         return $true
     } else {
-        Write-Host "❌ Cleanup falhou parcialmente. Verifique logs acima." -ForegroundColor Red
+        Write-Host " Cleanup falhou parcialmente. Verifique logs acima." -ForegroundColor Red
         return $false
     }
 }
@@ -277,25 +277,25 @@ function Test-FinalState {
     Write-Host ""
     
     # Verificar triggers do workflow
-    Write-Host "🔍 Verificando triggers do workflow..." -ForegroundColor Yellow
+    Write-Host " Verificando triggers do workflow..." -ForegroundColor Yellow
     $triggersCount = Get-WorkflowStatus
     
     if ($triggersCount -ge 6) {
-        Write-Host "  ✅ Workflow completo: $triggersCount triggers encontrados" -ForegroundColor Green
+        Write-Host "   Workflow completo: $triggersCount triggers encontrados" -ForegroundColor Green
     } else {
-        Write-Host "  ⚠️  Triggers insuficientes: $triggersCount/6" -ForegroundColor Yellow
+        Write-Host "    Triggers insuficientes: $triggersCount/6" -ForegroundColor Yellow
     }
     
     Write-Host ""
     
     # Verificar recursos legados restantes
-    Write-Host "🗑️  Verificando recursos legados restantes..." -ForegroundColor Yellow
+    Write-Host "  Verificando recursos legados restantes..." -ForegroundColor Yellow
     $remainingResources = Get-LegacyResources
     
     if ($remainingResources.Total -eq 0) {
-        Write-Host "  ✅ Todos os recursos legados foram removidos!" -ForegroundColor Green
+        Write-Host "   Todos os recursos legados foram removidos!" -ForegroundColor Green
     } else {
-        Write-Host "  ⚠️  $($remainingResources.Total) recursos ainda existem" -ForegroundColor Yellow
+        Write-Host "    $($remainingResources.Total) recursos ainda existem" -ForegroundColor Yellow
     }
     
     Write-Host ""
@@ -310,7 +310,7 @@ $currentTriggers = Get-WorkflowStatus
 $legacyResources = Get-LegacyResources
 
 Write-Host ""
-Write-Host "📊 RESUMO DO ESTADO ATUAL:" -ForegroundColor Cyan
+Write-Host " RESUMO DO ESTADO ATUAL:" -ForegroundColor Cyan
 Write-Host "  - Triggers no workflow: $currentTriggers" -ForegroundColor Gray
 Write-Host "  - Recursos legados: $($legacyResources.Total)" -ForegroundColor Gray
 Write-Host ""
@@ -348,21 +348,21 @@ switch ($option) {
         Test-FinalState
     }
     "0" {
-        Write-Host "👋 Saindo..." -ForegroundColor Yellow
+        Write-Host " Saindo..." -ForegroundColor Yellow
         exit 0
     }
     default {
-        Write-Host "❌ Opção inválida." -ForegroundColor Red
+        Write-Host " Opção inválida." -ForegroundColor Red
         exit 1
     }
 }
 
 Write-Host ""
 Write-Host "=====================================================================" -ForegroundColor Green
-Write-Host "✅ EXECUÇÃO CONCLUÍDA" -ForegroundColor Green
+Write-Host " EXECUÇÃO CONCLUÍDA" -ForegroundColor Green
 Write-Host "=====================================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "📋 Próximos passos recomendados:" -ForegroundColor Cyan
+Write-Host " Próximos passos recomendados:" -ForegroundColor Cyan
 Write-Host "  1. Executar teste E2E do pipeline Bronze→Silver→Gold" -ForegroundColor Gray
 Write-Host "  2. Validar tabelas no Athena (4 tabelas esperadas)" -ForegroundColor Gray
 Write-Host "  3. Monitorar custos no AWS Cost Explorer" -ForegroundColor Gray

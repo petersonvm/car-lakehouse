@@ -29,7 +29,7 @@ def lambda_handler(event, context):
     
     Evento esperado: S3 ObjectCreated notification do bronze-bucket
     """
-    print(f"📥 Evento recebido: {json.dumps(event)}")
+    print(f" Evento recebido: {json.dumps(event)}")
     
     try:
         # Extrair informações do arquivo Bronze do evento S3
@@ -37,35 +37,35 @@ def lambda_handler(event, context):
         bucket = record['s3']['bucket']['name']
         key = unquote_plus(record['s3']['object']['key'])
         
-        print(f"🗂️  Processando arquivo Bronze:")
+        print(f"  Processando arquivo Bronze:")
         print(f"   Bucket: {bucket}")
         print(f"   Key: {key}")
         
         # Validar que é um arquivo Parquet
         if not key.endswith('.parquet'):
-            print(f"⚠️  Arquivo não é Parquet, ignorando: {key}")
+            print(f"  Arquivo não é Parquet, ignorando: {key}")
             return {
                 'statusCode': 200,
                 'body': json.dumps('File ignored - not a parquet file')
             }
         
         # ETAPA 1: Ler arquivo Parquet aninhado do Bronze
-        print("\n🔄 ETAPA 1: Leitura do Bronze")
+        print("\n ETAPA 1: Leitura do Bronze")
         df_bronze = read_bronze_parquet(bucket, key)
-        print(f"   ✅ DataFrame carregado: {df_bronze.shape[0]} linhas, {df_bronze.shape[1]} colunas")
-        print(f"   📋 Colunas aninhadas detectadas: {[col for col in df_bronze.columns if isinstance(df_bronze[col].iloc[0], dict)]}")
+        print(f"    DataFrame carregado: {df_bronze.shape[0]} linhas, {df_bronze.shape[1]} colunas")
+        print(f"    Colunas aninhadas detectadas: {[col for col in df_bronze.columns if isinstance(df_bronze[col].iloc[0], dict)]}")
         
         # ETAPA 2: Transformação Silver (Flatten + Cleanse + Enrich + Partition)
-        print("\n🔄 ETAPA 2: Transformação Silver")
+        print("\n ETAPA 2: Transformação Silver")
         df_silver = transform_to_silver(df_bronze)
-        print(f"   ✅ DataFrame transformado: {df_silver.shape[0]} linhas, {df_silver.shape[1]} colunas")
-        print(f"   📋 Colunas achatadas: {list(df_silver.columns)[:10]}... (primeiras 10)")
+        print(f"    DataFrame transformado: {df_silver.shape[0]} linhas, {df_silver.shape[1]} colunas")
+        print(f"    Colunas achatadas: {list(df_silver.columns)[:10]}... (primeiras 10)")
         
         # ETAPA 3: Salvar no Silver (particionado por data do evento)
-        print("\n🔄 ETAPA 3: Escrita no Silver")
+        print("\n ETAPA 3: Escrita no Silver")
         write_to_silver(df_silver, key)
         
-        print(f"\n✅ Processamento concluído com sucesso!")
+        print(f"\n Processamento concluído com sucesso!")
         return {
             'statusCode': 200,
             'body': json.dumps({
@@ -77,7 +77,7 @@ def lambda_handler(event, context):
         }
         
     except Exception as e:
-        print(f"\n❌ ERRO durante o processamento: {str(e)}")
+        print(f"\n ERRO durante o processamento: {str(e)}")
         import traceback
         traceback.print_exc()
         raise
@@ -94,7 +94,7 @@ def read_bronze_parquet(bucket, key):
     Returns:
         DataFrame com estruturas aninhadas (structs)
     """
-    print(f"   📥 Baixando de s3://{bucket}/{key}...")
+    print(f"    Baixando de s3://{bucket}/{key}...")
     
     # Baixar arquivo do S3
     response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -103,7 +103,7 @@ def read_bronze_parquet(bucket, key):
     # Ler Parquet (PyArrow preserva structs como dicts)
     df = pd.read_parquet(BytesIO(parquet_content), engine='pyarrow')
     
-    print(f"   📊 Schema original (colunas aninhadas):")
+    print(f"    Schema original (colunas aninhadas):")
     for col in df.columns:
         dtype = type(df[col].iloc[0]) if len(df) > 0 else df[col].dtype
         print(f"      - {col}: {dtype}")
@@ -128,29 +128,29 @@ def transform_to_silver(df):
     """
     
     # 1. ACHATAMENTO (Flatten nested structures)
-    print("   🔹 1/5: Achatando estruturas aninhadas...")
+    print("    1/5: Achatando estruturas aninhadas...")
     df_flat = flatten_nested_columns(df)
-    print(f"      ✅ {len(df_flat.columns)} colunas após achatamento")
+    print(f"       {len(df_flat.columns)} colunas após achatamento")
     
     # 2. LIMPEZA (Cleansing)
-    print("   🔹 2/5: Aplicando limpeza e padronização...")
+    print("    2/5: Aplicando limpeza e padronização...")
     df_clean = cleanse_data(df_flat)
-    print(f"      ✅ Dados limpos (Manufacturer: Title Case, color: lowercase)")
+    print(f"       Dados limpos (Manufacturer: Title Case, color: lowercase)")
     
     # 3. CONVERSÃO DE TIPOS
-    print("   🔹 3/5: Convertendo tipos de dados...")
+    print("    3/5: Convertendo tipos de dados...")
     df_typed = convert_data_types(df_clean)
-    print(f"      ✅ Timestamps e datas convertidos")
+    print(f"       Timestamps e datas convertidos")
     
     # 4. ENRIQUECIMENTO (Enrichment)
-    print("   🔹 4/5: Calculando métricas enriquecidas...")
+    print("    4/5: Calculando métricas enriquecidas...")
     df_enriched = enrich_metrics(df_typed)
-    print(f"      ✅ Métricas calculadas: fuel_level_percentage, km_per_liter")
+    print(f"       Métricas calculadas: fuel_level_percentage, km_per_liter")
     
     # 5. PARTICIONAMENTO (Event-based partitions)
-    print("   🔹 5/5: Criando colunas de partição por data do evento...")
+    print("    5/5: Criando colunas de partição por data do evento...")
     df_partitioned = create_event_partitions(df_enriched)
-    print(f"      ✅ Partições criadas: event_year, event_month, event_day")
+    print(f"       Partições criadas: event_year, event_month, event_day")
     
     return df_partitioned
 
@@ -197,7 +197,7 @@ def flatten_nested_columns(df):
         # Adicionar prefixo com o nome da coluna original
         df_nested_flat.columns = [f"{nested_col}_{col}" for col in df_nested_flat.columns]
         
-        print(f"         └─ Criadas {len(df_nested_flat.columns)} colunas: {list(df_nested_flat.columns)[:3]}...")
+        print(f"          Criadas {len(df_nested_flat.columns)} colunas: {list(df_nested_flat.columns)[:3]}...")
         
         # Concatenar com o resultado
         df_result = pd.concat([df_result, df_nested_flat], axis=1)
@@ -317,7 +317,7 @@ def create_event_partitions(df):
         print(f"         event_day: {df_part['event_day'].unique()}")
     else:
         # Fallback: usar data atual se não houver timestamp
-        print(f"      ⚠️  'metrics_metricTimestamp' não encontrado, usando data atual")
+        print(f"        'metrics_metricTimestamp' não encontrado, usando data atual")
         now = datetime.now()
         df_part['event_year'] = now.year
         df_part['event_month'] = now.month
@@ -343,14 +343,14 @@ def write_to_silver(df, source_key):
     
     # Verificar se as colunas de partição existem
     if not all(col in df.columns for col in partition_cols):
-        print(f"   ⚠️  Colunas de partição não encontradas, escrevendo sem particionamento")
+        print(f"     Colunas de partição não encontradas, escrevendo sem particionamento")
         # Escrever tudo em um único arquivo
         write_single_partition(df, SILVER_BUCKET, 'car_telemetry', {}, source_key)
         return
     
     # Agrupar por partição
     grouped = df.groupby(partition_cols)
-    print(f"   📦 {len(grouped)} partições encontradas")
+    print(f"    {len(grouped)} partições encontradas")
     
     for partition_values, df_partition in grouped:
         year, month, day = partition_values
@@ -361,7 +361,7 @@ def write_to_silver(df, source_key):
             'event_day': int(day)
         }
         
-        print(f"   📝 Escrevendo partição: {partition_dict}")
+        print(f"    Escrevendo partição: {partition_dict}")
         
         # Remover colunas de partição do DataFrame (elas vão para o path)
         df_to_write = df_partition.drop(columns=partition_cols)
@@ -393,8 +393,8 @@ def write_single_partition(df, bucket, base_path, partition_dict, source_key):
     
     full_key = f"{partition_path}/{filename}"
     
-    print(f"      🎯 Destino: s3://{bucket}/{full_key}")
-    print(f"      📊 Linhas: {len(df)}, Colunas: {len(df.columns)}")
+    print(f"       Destino: s3://{bucket}/{full_key}")
+    print(f"       Linhas: {len(df)}, Colunas: {len(df.columns)}")
     
     # Converter DataFrame para Parquet em memória
     parquet_buffer = BytesIO()
@@ -421,4 +421,4 @@ def write_single_partition(df, bucket, base_path, partition_dict, source_key):
         }
     )
     
-    print(f"      ✅ Arquivo salvo com sucesso!")
+    print(f"       Arquivo salvo com sucesso!")

@@ -81,5 +81,5 @@ aws iam attach-user-policy `
 Remove-Item temp_cloudwatch_policy.json -ErrorAction SilentlyContinue
 Remove-Item temp_scheduler_policy.json -ErrorAction SilentlyContinue
 
-Write-Host "`n✅ Permissões adicionadas com sucesso!" -ForegroundColor Green
+Write-Host "`n Permissões adicionadas com sucesso!" -ForegroundColor Green
 Write-Host "`nAgora execute: terraform apply -auto-approve" -ForegroundColor Cyan

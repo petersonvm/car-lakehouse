@@ -7,9 +7,9 @@
 #
 # PIPELINE FLOW:
 #   Silver Crawler SUCCEEDED → [3 Gold Jobs in PARALLEL]
-#   ├─→ Gold Current State Job → Current State Crawler
-#   ├─→ Gold Performance Alerts Job → Alerts Crawler
-#   └─→ Gold Fuel Efficiency Job (NEW!) → Fuel Efficiency Crawler (NEW!)
+#   → Gold Current State Job → Current State Crawler
+#   → Gold Performance Alerts Job → Alerts Crawler
+#   → Gold Fuel Efficiency Job (NEW!) → Fuel Efficiency Crawler (NEW!)
 #
 # RESOURCES CREATED:
 #   - 2 IAM Roles (Job + Crawler)

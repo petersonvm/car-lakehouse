@@ -20,7 +20,7 @@ mkdir -p "${BUILD_DIR}"
 mkdir -p "${LAYER_BUILD_DIR}"
 mkdir -p "${ASSETS_DIR}"
 
-echo "✓ Directories created"
+echo " Directories created"
 echo ""
 
 # Step 1: Create Lambda Function Package
@@ -40,7 +40,7 @@ cd "${LAMBDA_DIR}"
 zip -q "${LAMBDA_PACKAGE}" lambda_function.py
 cd "${ROOT_DIR}"
 
-echo "✓ Lambda package created: ingestion_package.zip"
+echo " Lambda package created: ingestion_package.zip"
 echo ""
 
 # Step 2: Install dependencies for Lambda Layer
@@ -52,9 +52,9 @@ echo "This may take a few minutes..."
 pip install pandas pyarrow -t "${LAYER_BUILD_DIR}" --upgrade --quiet
 
 if [ $? -eq 0 ]; then
-    echo "✓ Dependencies installed"
+    echo " Dependencies installed"
 else
-    echo "✗ Error installing dependencies"
+    echo " Error installing dependencies"
     exit 1
 fi
 
@@ -76,7 +76,7 @@ cd "${BUILD_DIR}/layer"
 zip -r -q "${LAYER_PACKAGE}" python/
 cd "${ROOT_DIR}"
 
-echo "✓ Layer package created: pandas_pyarrow_layer.zip"
+echo " Layer package created: pandas_pyarrow_layer.zip"
 echo ""
 
 # Display package information
@@ -104,7 +104,7 @@ read -p "Do you want to clean up build directory? (y/N) " cleanup
 
 if [ "$cleanup" = "y" ] || [ "$cleanup" = "Y" ]; then
     rm -rf "${BUILD_DIR}"
-    echo "✓ Build directory cleaned"
+    echo " Build directory cleaned"
 else
     echo "Build directory preserved at: ${BUILD_DIR}"
 fi

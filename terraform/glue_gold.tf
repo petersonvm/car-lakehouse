@@ -583,7 +583,7 @@ Pipeline Completo (Silver → Gold):
 
 1. Silver Workflow executa:
    - Silver Job (ETL) → SUCCEEDED
-   - Silver Crawler → SUCCEEDED ✅
+   - Silver Crawler → SUCCEEDED 
 
 2. Gold Workflow é acionado automaticamente:
    - Trigger Condicional detecta: Silver Crawler = SUCCEEDED
@@ -594,13 +594,13 @@ Pipeline Completo (Silver → Gold):
    - Aplica Window Function (row_number por carChassis)
    - Filtra apenas currentMileage máximo (estado atual)
    - Escreve snapshot no Gold Bucket (overwrite)
-   - Status: SUCCEEDED ✅
+   - Status: SUCCEEDED 
 
 4. Gold Crawler é acionado automaticamente:
    - Trigger Condicional detecta: Gold Job = SUCCEEDED
    - Crawler escaneia car_current_state/
    - Atualiza tabela gold_car_current_state no catálogo
-   - Status: SUCCEEDED ✅
+   - Status: SUCCEEDED 
 
 5. Athena atualizado:
    - Tabela gold_car_current_state disponível

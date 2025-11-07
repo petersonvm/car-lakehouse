@@ -20,18 +20,18 @@ NC='\033[0m' # No Color
 LANDING_BUCKET="${PROJECT_NAME}-landing-${ENVIRONMENT}"
 TEST_DATA_DIR="test_data"
 
-echo -e "\n${GREEN}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║          🚀 TEST DATA UPLOAD - CAR LAKEHOUSE                ║${NC}"
-echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════╝${NC}\n"
+echo -e "\n${GREEN}${NC}"
+echo -e "${GREEN}           TEST DATA UPLOAD - CAR LAKEHOUSE                ${NC}"
+echo -e "${GREEN}${NC}\n"
 
-echo -e "${CYAN}📋 CONFIGURAÇÃO:${NC}"
+echo -e "${CYAN} CONFIGURAÇÃO:${NC}"
 echo -e "${GRAY}   Landing Bucket: ${LANDING_BUCKET}${NC}"
 echo -e "${GRAY}   Directory: ${TEST_DATA_DIR}${NC}"
 echo -e "${GRAY}   Arquivo(s): ${SAMPLE_FILE}${NC}\n"
 
 # Verificar se diretório existe
 if [ ! -d "$TEST_DATA_DIR" ]; then
-    echo -e "${RED}❌ ERRO: Diretório '${TEST_DATA_DIR}' não encontrado!${NC}"
+    echo -e "${RED} ERRO: Diretório '${TEST_DATA_DIR}' não encontrado!${NC}"
     echo -e "${RED}   Execute este script da raiz do projeto.${NC}\n"
     exit 1
 fi
@@ -48,7 +48,7 @@ else
     FILE_PATH="${TEST_DATA_DIR}/${FILE_NAME}"
     
     if [ ! -f "$FILE_PATH" ]; then
-        echo -e "${RED}❌ ERRO: Arquivo '${FILE_NAME}' não encontrado!${NC}"
+        echo -e "${RED} ERRO: Arquivo '${FILE_NAME}' não encontrado!${NC}"
         exit 1
     fi
     
@@ -56,7 +56,7 @@ else
     FILE_COUNT=1
 fi
 
-echo -e "${YELLOW}📤 FAZENDO UPLOAD DE ${FILE_COUNT} ARQUIVO(S)...${NC}\n"
+echo -e "${YELLOW} FAZENDO UPLOAD DE ${FILE_COUNT} ARQUIVO(S)...${NC}\n"
 
 # Upload dos arquivos
 for FILE in $FILES; do
@@ -64,15 +64,15 @@ for FILE in $FILES; do
     echo -ne "${GRAY}   Uploading: ${FILE_NAME}...${NC}"
     
     if aws s3 cp "$FILE" "s3://${LANDING_BUCKET}/" --only-show-errors; then
-        echo -e " ${GREEN}✅${NC}"
+        echo -e " ${GREEN}${NC}"
         ((SUCCESS_COUNT++))
     else
-        echo -e " ${RED}❌${NC}"
+        echo -e " ${RED}${NC}"
         ((FAIL_COUNT++))
     fi
 done
 
-echo -e "\n${CYAN}📊 RESULTADO:${NC}"
+echo -e "\n${CYAN} RESULTADO:${NC}"
 echo -e "${GREEN}   Sucesso: ${SUCCESS_COUNT} arquivo(s)${NC}"
 
 if [ $FAIL_COUNT -gt 0 ]; then
@@ -82,7 +82,7 @@ else
 fi
 
 if [ $SUCCESS_COUNT -gt 0 ]; then
-    echo -e "\n${YELLOW}✅ PRÓXIMOS PASSOS:${NC}"
+    echo -e "\n${YELLOW} PRÓXIMOS PASSOS:${NC}"
     echo -e "${GRAY}   1. Check Lambda Ingestion logs:${NC}"
     echo -e "${CYAN}      aws logs tail /aws/lambda/${PROJECT_NAME}-ingestion-${ENVIRONMENT} --follow${NC}\n"
     
@@ -96,4 +96,4 @@ if [ $SUCCESS_COUNT -gt 0 ]; then
     echo -e "${CYAN}      SELECT * FROM \\\"${PROJECT_NAME}-catalog-${ENVIRONMENT}\\\".\\\"silver_car_telemetry\\\" LIMIT 10;${NC}\n"
 fi
 
-echo -e "${GREEN}🎯 Upload concluído!${NC}\n"
+echo -e "${GREEN} Upload concluído!${NC}\n"

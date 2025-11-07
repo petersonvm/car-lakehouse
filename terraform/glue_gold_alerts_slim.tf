@@ -1,9 +1,9 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * TERRAFORM: Gold Performance Alerts - SLIM Pipeline (Optimized)
- * ═══════════════════════════════════════════════════════════════════════════
  * 
- * 📋 DESCRIÇÃO:
+ * TERRAFORM: Gold Performance Alerts - SLIM Pipeline (Optimized)
+ * 
+ * 
+ *  DESCRIÇÃO:
  *    Infraestrutura completa para o pipeline OTIMIZADO de alertas de performance.
  *    
  *    **ESTRATÉGIA DE SUBSTITUIÇÃO:**
@@ -11,13 +11,13 @@
  *    2. Atualizar workflow trigger para usar novo job
  *    3. Deprecar recursos antigos (comentados para posterior remoção)
  * 
- * 🎯 OTIMIZAÇÕES:
- *    - ✅ Tabela com apenas 7 colunas (vs 36 do antigo)
- *    - ✅ Redução de ~80% no armazenamento
- *    - ✅ Queries mais rápidas (menos colunas)
- *    - ✅ Custos de S3 e Athena reduzidos
+ *  OTIMIZAÇÕES:
+ *    -  Tabela com apenas 7 colunas (vs 36 do antigo)
+ *    -  Redução de ~80% no armazenamento
+ *    -  Queries mais rápidas (menos colunas)
+ *    -  Custos de S3 e Athena reduzidos
  * 
- * 📦 RECURSOS CRIADOS:
+ *  RECURSOS CRIADOS:
  *    - IAM Role (Job)
  *    - IAM Role (Crawler)
  *    - IAM Policies (5x para Job, 3x para Crawler)
@@ -27,7 +27,7 @@
  *    - S3 Script Upload
  *    - CloudWatch Log Group
  * 
- * ═══════════════════════════════════════════════════════════════════════════
+ * 
  */
 
 # ============================================================================
@@ -460,7 +460,7 @@ output "gold_alerts_slim_table_name" {
 # ============================================================================
 
 /**
- * ⚠️  ATENÇÃO: Recursos abaixo devem ser removidos APÓS validação do pipeline slim
+ *   ATENÇÃO: Recursos abaixo devem ser removidos APÓS validação do pipeline slim
  * 
  * Para remover os recursos antigos:
  * 1. Descomentar o bloco null_resource abaixo
@@ -484,11 +484,11 @@ output "gold_alerts_slim_table_name" {
 #   
 #   provisioner "local-exec" {
 #     command = <<-EOT
-#       echo "🧹 Limpeza dos recursos antigos do pipeline bloated..."
+#       echo " Limpeza dos recursos antigos do pipeline bloated..."
 #       echo "   - Job: gold-performance-alerts"
 #       echo "   - Crawler: gold-performance-alerts-crawler"
 #       echo "   - Trigger: gold-alerts-job-succeeded-start-crawler"
-#       echo "   ✅ Use 'terraform state rm' para remover do state"
+#       echo "    Use 'terraform state rm' para remover do state"
 #     EOT
 #   }
 # }

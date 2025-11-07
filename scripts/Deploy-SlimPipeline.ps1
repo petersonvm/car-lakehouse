@@ -1,8 +1,8 @@
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # DEPLOY SLIM ALERTS PIPELINE
 # Substitui pipeline BLOATED (36 colunas) por versao SLIM (7 colunas)
 # Economia esperada: 80% em storage S3 + reducao de custos Athena
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 param(
     [Parameter(Mandatory=$false)]

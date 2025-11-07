@@ -46,7 +46,7 @@ from datetime import datetime
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("🥇 AWS GLUE JOB - GOLD LAYER: CAR CURRENT STATE (NOVA ESTRUTURA)")
+print(" AWS GLUE JOB - GOLD LAYER: CAR CURRENT STATE (NOVA ESTRUTURA)")
 print("=" * 80)
 
 # Obter parâmetros do Job
@@ -65,37 +65,37 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
-print(f"🚀 Job iniciado: {args['JOB_NAME']}")
-print(f"📅 Timestamp: {datetime.now().isoformat()}")
+print(f" Job iniciado: {args['JOB_NAME']}")
+print(f" Timestamp: {datetime.now().isoformat()}")
 
 # ============================================================================
 # 2. LEITURA DOS DADOS SILVER (NOVA ESTRUTURA FLATTENED)
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura dos dados Silver processados...")
+print("\n ETAPA 1: Leitura dos dados Silver processados...")
 
 # Definir caminho Silver
 silver_path = f"s3://{args['silver_bucket']}/{args['silver_path']}"
-print(f"   📍 Origem Silver: {silver_path}")
+print(f"    Origem Silver: {silver_path}")
 
 # Ler dados Silver diretamente do S3 (Parquet)
 df_silver = spark.read.parquet(silver_path)
 
 # Contar registros Silver
 silver_count = df_silver.count()
-print(f"   ✅ Registros encontrados: {silver_count}")
+print(f"    Registros encontrados: {silver_count}")
 
 if silver_count == 0:
-    print("   ℹ️  Nenhum dado na camada Silver. Finalizando job.")
+    print("   ℹ  Nenhum dado na camada Silver. Finalizando job.")
     job.commit()
     sys.exit(0)
 
 # Mostrar schema Silver
-print("\n   📊 Schema Silver (flattened):")
+print("\n    Schema Silver (flattened):")
 df_silver.printSchema()
 
 # Mostrar exemplo de dados Silver
-print(f"\n   🔍 Exemplo de dados Silver:")
+print(f"\n    Exemplo de dados Silver:")
 df_silver.select(
     "event_id", "car_chassis", "current_mileage_km", 
     "insurance_status", "manufacturer", "model"
@@ -105,7 +105,7 @@ df_silver.select(
 # 3. CONSOLIDAÇÃO POR VEÍCULO (ESTADO ATUAL)
 # ============================================================================
 
-print("\n🎯 ETAPA 2: Consolidação por veículo (estado atual)...")
+print("\n ETAPA 2: Consolidação por veículo (estado atual)...")
 
 # Window function para ranking por quilometragem e timestamp
 window_spec = Window.partitionBy("car_chassis").orderBy(
@@ -126,19 +126,19 @@ df_current_state = df_ranked.filter(F.col("rank_current_state") == 1).drop("rank
 unique_vehicles = df_current_state.select("car_chassis").distinct().count()
 total_records = df_current_state.count()
 
-print(f"   📊 Veículos únicos: {unique_vehicles}")
-print(f"   📊 Total de registros: {total_records}")
+print(f"    Veículos únicos: {unique_vehicles}")
+print(f"    Total de registros: {total_records}")
 
 if unique_vehicles == total_records:
-    print("   ✅ Consolidação OK: 1 registro por veículo")
+    print("    Consolidação OK: 1 registro por veículo")
 else:
-    print("   ⚠️  Atenção: Múltiplos registros detectados")
+    print("     Atenção: Múltiplos registros detectados")
 
 # ============================================================================
 # 4. ENRIQUECIMENTO GOLD LAYER (KPIS E MÉTRICAS AVANÇADAS)
 # ============================================================================
 
-print("\n📈 ETAPA 3: Aplicando enriquecimento Gold Layer...")
+print("\n ETAPA 3: Aplicando enriquecimento Gold Layer...")
 
 # Enriquecer com KPIs Gold
 df_gold_enriched = df_current_state.select(
@@ -239,10 +239,10 @@ df_gold_enriched = df_current_state.select(
     F.current_timestamp().alias("gold_processing_timestamp")
 )
 
-print(f"   ✅ Registros após enriquecimento Gold: {df_gold_enriched.count()}")
+print(f"    Registros após enriquecimento Gold: {df_gold_enriched.count()}")
 
 # Mostrar KPIs Gold calculados
-print("\n   🔍 KPIs Gold Layer calculados:")
+print("\n    KPIs Gold Layer calculados:")
 df_gold_enriched.select(
     "car_chassis", "manufacturer", "model",
     "fuel_status", "maintenance_status", "battery_status", 
@@ -253,60 +253,60 @@ df_gold_enriched.select(
 # 5. GRAVAÇÃO NO GOLD LAYER (OVERWRITE COMPLETO)
 # ============================================================================
 
-print("\n💾 ETAPA 4: Gravação no Gold Layer...")
+print("\n ETAPA 4: Gravação no Gold Layer...")
 
 # Preparar dados finais
 df_gold_final = df_gold_enriched
 
 gold_path = f"s3://{args['gold_bucket']}/{args['gold_path']}"
-print(f"   📍 Destino Gold: {gold_path}")
-print(f"   📊 Total de registros a gravar: {df_gold_final.count()}")
+print(f"    Destino Gold: {gold_path}")
+print(f"    Total de registros a gravar: {df_gold_final.count()}")
 
 # Gravar no Gold Layer (overwrite completo)
 df_gold_final.write.mode("overwrite").parquet(gold_path)
 
-print("   ✅ Dados gravados no Gold Layer com sucesso!")
+print("    Dados gravados no Gold Layer com sucesso!")
 
 # ============================================================================
 # 6. ESTATÍSTICAS FINAIS E RELATÓRIO
 # ============================================================================
 
-print("\n📊 RELATÓRIO FINAL GOLD LAYER:")
+print("\n RELATÓRIO FINAL GOLD LAYER:")
 print("=" * 60)
 
 # Estatísticas finais
 final_records = df_gold_final.count()
 total_columns = len(df_gold_final.columns)
 
-print(f"📥 Registros Silver (entrada): {silver_count}")
-print(f"📤 Registros Gold (saída): {final_records}")
-print(f"🎯 Taxa de consolidação: {silver_count}:{final_records}")
-print(f"🏗️  Total de campos Gold: {total_columns}")
+print(f" Registros Silver (entrada): {silver_count}")
+print(f" Registros Gold (saída): {final_records}")
+print(f" Taxa de consolidação: {silver_count}:{final_records}")
+print(f"  Total de campos Gold: {total_columns}")
 
 # Análise de KPIs por status
-print(f"\n📈 ANÁLISE DE KPIs GOLD:")
+print(f"\n ANÁLISE DE KPIs GOLD:")
 print("=" * 40)
 
 # Status do seguro
-print("🛡️  Status de Seguro:")
+print("  Status de Seguro:")
 df_gold_final.groupBy("insurance_status").count().show(truncate=False)
 
 # Status geral do veículo  
-print("🚗 Status Geral dos Veículos:")
+print(" Status Geral dos Veículos:")
 df_gold_final.groupBy("vehicle_overall_status").count().show(truncate=False)
 
 # Status de combustível
-print("⛽ Status de Combustível:")
+print(" Status de Combustível:")
 df_gold_final.groupBy("fuel_status").count().show(truncate=False)
 
 # Mostrar lista de campos Gold
-print(f"\n📋 CAMPOS GOLD CRIADOS ({total_columns}):")
+print(f"\n CAMPOS GOLD CRIADOS ({total_columns}):")
 print("=" * 50)
 for i, col_name in enumerate(df_gold_final.columns, 1):
     print(f"{i:2d}. {col_name}")
 
 # Exemplo final
-print(f"\n🔍 EXEMPLO DE DADOS GOLD (ESTADO ATUAL):")
+print(f"\n EXEMPLO DE DADOS GOLD (ESTADO ATUAL):")
 print("=" * 60)
 df_gold_final.select(
     "car_chassis", "manufacturer", "model", "current_mileage_km",
@@ -315,8 +315,8 @@ df_gold_final.select(
 ).show(3, truncate=False)
 
 print("\n" + "=" * 80)
-print("🎉 GOLD LAYER JOB - CONCLUÍDO COM SUCESSO!")
-print(f"🕒 Timestamp de conclusão: {datetime.now().isoformat()}")
+print(" GOLD LAYER JOB - CONCLUÍDO COM SUCESSO!")
+print(f" Timestamp de conclusão: {datetime.now().isoformat()}")
 print("   Estado atual dos veículos consolidado e enriquecido!")
 print("=" * 80)
 

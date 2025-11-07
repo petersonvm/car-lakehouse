@@ -12,7 +12,7 @@
 # ===================================================================
 # PARTE 1: WORKFLOW COMPLETION STATUS
 # ===================================================================
-# ✅ GATILHOS 4, 5 E 6 JÁ IMPLEMENTADOS EM workflow.tf
+#  GATILHOS 4, 5 E 6 JÁ IMPLEMENTADOS EM workflow.tf
 # 
 # Recursos existentes:
 # - aws_glue_trigger.trigger_gold_current_state_to_crawler (linhas 80-94)
@@ -24,7 +24,7 @@
 # - aws_glue_crawler.gold_fuel_efficiency_crawler
 # - aws_glue_crawler.gold_alerts_slim_crawler
 #
-# ⚠️ AÇÃO NECESSÁRIA: Aplicar terraform apply para criar esses triggers na AWS
+#  AÇÃO NECESSÁRIA: Aplicar terraform apply para criar esses triggers na AWS
 # ===================================================================
 
 # ===================================================================
@@ -182,7 +182,7 @@ resource "null_resource" "cleanup_job_performance_alerts" {
 output "workflow_completion_status" {
   description = "Status da completude do workflow"
   value = {
-    gatilhos_workflow_implementados = "✅ Gatilhos 4, 5 e 6 definidos em workflow.tf"
+    gatilhos_workflow_implementados = " Gatilhos 4, 5 e 6 definidos em workflow.tf"
     acao_necessaria                 = "terraform apply para criar triggers na AWS"
     workflow_name                   = "datalake-pipeline-silver-gold-workflow-dev"
     triggers_a_criar = [

@@ -24,11 +24,11 @@ $Red = "Red"
 $Cyan = "Cyan"
 $Gray = "Gray"
 
-Write-Host "`n╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor $Green
-Write-Host "║       🧹 LEGACY RESOURCES CLEANUP - CAR LAKEHOUSE               ║" -ForegroundColor $Green
-Write-Host "╚═══════════════════════════════════════════════════════════════════════╝`n" -ForegroundColor $Green
+Write-Host "`n" -ForegroundColor $Green
+Write-Host "        LEGACY RESOURCES CLEANUP - CAR LAKEHOUSE               " -ForegroundColor $Green
+Write-Host "`n" -ForegroundColor $Green
 
-Write-Host "📋 CONFIGURATION:" -ForegroundColor $Cyan
+Write-Host " CONFIGURATION:" -ForegroundColor $Cyan
 Write-Host "   Mode: $(if($DryRun){'DRY RUN (simulation)'}else{'REAL EXECUTION'})" -ForegroundColor $(if($DryRun){$Yellow}else{$Red})
 Write-Host "   Environment: $Environment" -ForegroundColor $Gray
 Write-Host "   Project: $ProjectName" -ForegroundColor $Gray
@@ -36,7 +36,7 @@ Write-Host "   Backup: $(if($SkipBackup){'Disabled'}else{'Enabled'})`n" -Foregro
 
 # Validate terraform directory
 if (-not (Test-Path "terraform")) {
-    Write-Host "❌ ERROR: Directory 'terraform' not found!" -ForegroundColor $Red
+    Write-Host " ERROR: Directory 'terraform' not found!" -ForegroundColor $Red
     Write-Host "   Run this script from project root.`n" -ForegroundColor $Red
     exit 1
 }
@@ -47,7 +47,7 @@ Set-Location terraform
 # PHASE 1: STATE BACKUP
 # ============================================
 if (-not $SkipBackup) {
-    Write-Host "📦 PHASE 1: TERRAFORM STATE BACKUP" -ForegroundColor $Yellow
+    Write-Host " PHASE 1: TERRAFORM STATE BACKUP" -ForegroundColor $Yellow
     
     $BackupFile = "terraform.tfstate.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     
@@ -56,9 +56,9 @@ if (-not $SkipBackup) {
     } else {
         try {
             terraform state pull > $BackupFile
-            Write-Host "   ✅ Backup created: $BackupFile" -ForegroundColor $Green
+            Write-Host "    Backup created: $BackupFile" -ForegroundColor $Green
         } catch {
-            Write-Host "   ❌ ERROR creating backup: $_" -ForegroundColor $Red
+            Write-Host "    ERROR creating backup: $_" -ForegroundColor $Red
             exit 1
         }
     }
@@ -68,7 +68,7 @@ if (-not $SkipBackup) {
 # ============================================
 # PHASE 2: REMOVE RESOURCES FROM STATE
 # ============================================
-Write-Host "🗑️  PHASE 2: REMOVE RESOURCES FROM TERRAFORM STATE" -ForegroundColor $Yellow
+Write-Host "  PHASE 2: REMOVE RESOURCES FROM TERRAFORM STATE" -ForegroundColor $Yellow
 
 $ResourcesToRemove = @(
     "aws_lambda_function.cleansing",
@@ -95,13 +95,13 @@ foreach ($Resource in $ResourcesToRemove) {
         try {
             $Output = terraform state rm $Resource 2>&1
             if ($LASTEXITCODE -eq 0) {
-                Write-Host " ✅" -ForegroundColor $Green
+                Write-Host " " -ForegroundColor $Green
                 $RemovedCount++
             } else {
-                Write-Host " ⚠️ (não encontrado)" -ForegroundColor $Yellow
+                Write-Host "  (não encontrado)" -ForegroundColor $Yellow
             }
         } catch {
-            Write-Host " ❌" -ForegroundColor $Red
+            Write-Host " " -ForegroundColor $Red
             $ErrorCount++
         }
     }
@@ -116,7 +116,7 @@ Write-Host ""
 # ============================================
 # PHASE 3: DESTROY RESOURCES IN AWS
 # ============================================
-Write-Host "💥 FASE 3: DESTRUIR RECURSOS NA AWS" -ForegroundColor $Yellow
+Write-Host " FASE 3: DESTRUIR RECURSOS NA AWS" -ForegroundColor $Yellow
 
 Write-Host "   3.1. Removendo Lambdas legadas..." -ForegroundColor $Gray
 
@@ -135,12 +135,12 @@ foreach ($Lambda in $LambdasToDelete) {
         try {
             aws lambda delete-function --function-name $Lambda 2>$null
             if ($LASTEXITCODE -eq 0) {
-                Write-Host " ✅" -ForegroundColor $Green
+                Write-Host " " -ForegroundColor $Green
             } else {
-                Write-Host " ⚠️ (não encontrado)" -ForegroundColor $Yellow
+                Write-Host "  (não encontrado)" -ForegroundColor $Yellow
             }
         } catch {
-            Write-Host " ⚠️" -ForegroundColor $Yellow
+            Write-Host " " -ForegroundColor $Yellow
         }
     }
 }
@@ -161,12 +161,12 @@ foreach ($Crawler in $CrawlersToDelete) {
         try {
             aws glue delete-crawler --name $Crawler 2>$null
             if ($LASTEXITCODE -eq 0) {
-                Write-Host " ✅" -ForegroundColor $Green
+                Write-Host " " -ForegroundColor $Green
             } else {
-                Write-Host " ⚠️ (não encontrado)" -ForegroundColor $Yellow
+                Write-Host "  (não encontrado)" -ForegroundColor $Yellow
             }
         } catch {
-            Write-Host " ⚠️" -ForegroundColor $Yellow
+            Write-Host " " -ForegroundColor $Yellow
         }
     }
 }
@@ -189,12 +189,12 @@ foreach ($Policy in $PoliciesToDelete) {
         try {
             aws iam delete-role-policy --role-name $RoleName --policy-name $Policy 2>$null
             if ($LASTEXITCODE -eq 0) {
-                Write-Host " ✅" -ForegroundColor $Green
+                Write-Host " " -ForegroundColor $Green
             } else {
-                Write-Host " ⚠️" -ForegroundColor $Yellow
+                Write-Host " " -ForegroundColor $Yellow
             }
         } catch {
-            Write-Host " ⚠️" -ForegroundColor $Yellow
+            Write-Host " " -ForegroundColor $Yellow
         }
     }
 }
@@ -207,12 +207,12 @@ if ($DryRun) {
     try {
         aws iam delete-role --role-name $RoleName 2>$null
         if ($LASTEXITCODE -eq 0) {
-            Write-Host " ✅" -ForegroundColor $Green
+            Write-Host " " -ForegroundColor $Green
         } else {
-            Write-Host " ⚠️" -ForegroundColor $Yellow
+            Write-Host " " -ForegroundColor $Yellow
         }
     } catch {
-        Write-Host " ⚠️" -ForegroundColor $Yellow
+        Write-Host " " -ForegroundColor $Yellow
     }
 }
 
@@ -222,13 +222,13 @@ Write-Host ""
 # PHASE 4: VALIDATION
 # ============================================
 if (-not $DryRun) {
-    Write-Host "🔍 FASE 4: VALIDAÇÃO PÓS-LIMPEZA" -ForegroundColor $Yellow
+    Write-Host " FASE 4: VALIDAÇÃO PÓS-LIMPEZA" -ForegroundColor $Yellow
     
     Write-Host "`n   4.1. Active Lambdas (expected: 1):" -ForegroundColor $Gray
     $Lambdas = aws lambda list-functions --query "Functions[?starts_with(FunctionName, '$ProjectName')].FunctionName" --output text 2>$null
     if ($Lambdas) {
         $LambdaCount = ($Lambdas -split "`t").Count
-        Write-Host "      ✅ $LambdaCount Lambda(s) ativa(s)" -ForegroundColor $Green
+        Write-Host "       $LambdaCount Lambda(s) ativa(s)" -ForegroundColor $Green
         $Lambdas -split "`t" | ForEach-Object { Write-Host "         - $_" -ForegroundColor $Gray }
     }
     
@@ -236,7 +236,7 @@ if (-not $DryRun) {
     $Crawlers = aws glue get-crawlers --query "Crawlers[?starts_with(Name, '$ProjectName') || starts_with(Name, 'gold') || starts_with(Name, 'silver')].Name" --output text 2>$null
     if ($Crawlers) {
         $CrawlerCount = ($Crawlers -split "`t").Count
-        Write-Host "      ✅ $CrawlerCount Crawler(s) ativo(s)" -ForegroundColor $Green
+        Write-Host "       $CrawlerCount Crawler(s) ativo(s)" -ForegroundColor $Green
         $Crawlers -split "`t" | ForEach-Object { Write-Host "         - $_" -ForegroundColor $Gray }
     }
     
@@ -244,7 +244,7 @@ if (-not $DryRun) {
     $Jobs = aws glue get-jobs --query "Jobs[?starts_with(Name, '$ProjectName')].Name" --output text 2>$null
     if ($Jobs) {
         $JobCount = ($Jobs -split "`t").Count
-        Write-Host "      ✅ $JobCount Job(s) ativo(s)" -ForegroundColor $Green
+        Write-Host "       $JobCount Job(s) ativo(s)" -ForegroundColor $Green
         $Jobs -split "`t" | ForEach-Object { Write-Host "         - $_" -ForegroundColor $Gray }
     }
     
@@ -254,22 +254,22 @@ if (-not $DryRun) {
 # ============================================
 # RESUMO
 # ============================================
-Write-Host "📊 RESUMO DA LIMPEZA:" -ForegroundColor $Cyan
+Write-Host " RESUMO DA LIMPEZA:" -ForegroundColor $Cyan
 
 if ($DryRun) {
-    Write-Host "   ⚠️  MODO DRY RUN - Nenhuma alteração foi feita" -ForegroundColor $Yellow
+    Write-Host "     MODO DRY RUN - Nenhuma alteração foi feita" -ForegroundColor $Yellow
     Write-Host "   Execute sem --DryRun para aplicar as mudanças`n" -ForegroundColor $Yellow
 } else {
-    Write-Host "   ✅ Limpeza concluída!" -ForegroundColor $Green
-    Write-Host "   ✅ $RemovedCount recursos removidos do Terraform state" -ForegroundColor $Green
-    Write-Host "   ✅ Recursos destruídos na AWS" -ForegroundColor $Green
+    Write-Host "    Limpeza concluída!" -ForegroundColor $Green
+    Write-Host "    $RemovedCount recursos removidos do Terraform state" -ForegroundColor $Green
+    Write-Host "    Recursos destruídos na AWS" -ForegroundColor $Green
     
     if (-not $SkipBackup) {
-        Write-Host "   ✅ Backup salvo: $BackupFile`n" -ForegroundColor $Green
+        Write-Host "    Backup salvo: $BackupFile`n" -ForegroundColor $Green
     }
 }
 
-Write-Host "🎯 PRÓXIMOS PASSOS:" -ForegroundColor $Yellow
+Write-Host " PRÓXIMOS PASSOS:" -ForegroundColor $Yellow
 
 if ($DryRun) {
     Write-Host "   1. Revisar as ações planejadas acima" -ForegroundColor $Gray
@@ -294,7 +294,7 @@ if ($DryRun) {
     Write-Host "      git push origin gold" -ForegroundColor $Cyan
 }
 
-Write-Host "`n🛟 ROLLBACK (se necessário):" -ForegroundColor $Yellow
+Write-Host "`n ROLLBACK (se necessário):" -ForegroundColor $Yellow
 if (-not $SkipBackup) {
     Write-Host "   cp $BackupFile terraform.tfstate" -ForegroundColor $Cyan
     Write-Host "   terraform apply`n" -ForegroundColor $Cyan
@@ -302,4 +302,4 @@ if (-not $SkipBackup) {
 
 Set-Location ..
 
-Write-Host "✅ Script concluído!`n" -ForegroundColor $Green
+Write-Host " Script concluído!`n" -ForegroundColor $Green

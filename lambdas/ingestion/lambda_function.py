@@ -206,7 +206,7 @@ def lambda_handler(event, context):
                         }
                     )
                     
-                    print(f"✅ Successfully uploaded to Bronze: {dest_key}")
+                    print(f" Successfully uploaded to Bronze: {dest_key}")
                     
                     # Delete the source file from landing bucket ONLY after successful Bronze write
                     # This ensures we don't lose data if the write fails
@@ -215,7 +215,7 @@ def lambda_handler(event, context):
                         Bucket=source_bucket,
                         Key=source_key
                     )
-                    print(f"✅ Source file deleted from landing: {source_key}")
+                    print(f" Source file deleted from landing: {source_key}")
                     
                     # Mark as successfully processed
                     processed_files.append({
@@ -238,13 +238,13 @@ def lambda_handler(event, context):
                 except Exception as upload_error:
                     # If upload or deletion fails, log error but don't delete source
                     error_msg = f"Failed to upload to Bronze or delete source: {str(upload_error)}"
-                    print(f"❌ {error_msg}")
-                    print(f"ℹ️  Source file preserved in landing bucket: {source_key}")
+                    print(f" {error_msg}")
+                    print(f"ℹ  Source file preserved in landing bucket: {source_key}")
                     raise  # Re-raise to be caught by outer exception handler
                 
             except Exception as file_error:
                 error_msg = f"Error processing file {source_key}: {str(file_error)}"
-                print(f"❌ {error_msg}")
+                print(f" {error_msg}")
                 failed_files.append({
                     'file': source_key,
                     'error': str(file_error)
@@ -274,7 +274,7 @@ def lambda_handler(event, context):
         
     except Exception as e:
         error_msg = f"Critical error in lambda_handler: {str(e)}"
-        print(f"❌ {error_msg}")
+        print(f" {error_msg}")
         
         return {
             'statusCode': 500,

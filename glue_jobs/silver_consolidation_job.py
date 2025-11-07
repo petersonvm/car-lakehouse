@@ -69,15 +69,15 @@ job.init(args['JOB_NAME'], args)
 spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
 
 print("=" * 80)
-print(f"🚀 Job iniciado: {args['JOB_NAME']}")
-print(f"📅 Timestamp: {datetime.now().isoformat()}")
+print(f" Job iniciado: {args['JOB_NAME']}")
+print(f" Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
 # 2. LEITURA DOS DADOS DO BRONZE VIA GLUE CATALOG
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura de dados do Bronze via Glue Catalog...")
+print("\n ETAPA 1: Leitura de dados do Bronze via Glue Catalog...")
 print(f"   Database: {args['bronze_database']}")
 print(f"   Table: {args['bronze_table']}")
 
@@ -92,25 +92,25 @@ df_bronze = bronze_dynamic_frame.toDF()
 
 # Contar registros
 new_records_count = df_bronze.count()
-print(f"   ✅ Registros encontrados: {new_records_count}")
+print(f"    Registros encontrados: {new_records_count}")
 
 # Mostrar schema do Bronze
-print("\n   📊 Schema Bronze (car_bronze):")
+print("\n    Schema Bronze (car_bronze):")
 df_bronze.printSchema()
 
 if new_records_count == 0:
-    print("   ℹ️  Nenhum registro para processar.")
+    print("   ℹ  Nenhum registro para processar.")
     job.commit()
     sys.exit(0)
 else:
-    print(f"   🔍 Exemplo de dados Bronze:")
+    print(f"    Exemplo de dados Bronze:")
     df_bronze.select("event_id", "carChassis").show(2, truncate=False)
 
 # ============================================================================
 # 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA BRONZE
 # ============================================================================
 
-print("\n🔧 ETAPA 2: Achatamento da estrutura Bronze...")
+print("\n ETAPA 2: Achatamento da estrutura Bronze...")
 
 # Aplicar flattening da estrutura
 df_silver_flattened = df_bronze.select(
@@ -180,13 +180,13 @@ df_silver_flattened = df_bronze.select(
 
 # Contar registros após flattening
 flattened_count = df_silver_flattened.count()
-print(f"   ✅ Registros após flattening: {flattened_count}")
+print(f"    Registros após flattening: {flattened_count}")
 
 # ============================================================================
 # 3.5. DEDUPLICAÇÃO POR EVENT_ID
 # ============================================================================
 
-print("\n🔍 ETAPA 2.5: Aplicando deduplicação por event_id...")
+print("\n ETAPA 2.5: Aplicando deduplicação por event_id...")
 
 # Contar duplicatas antes
 total_before_dedup = df_silver_flattened.count()
@@ -194,7 +194,7 @@ distinct_events = df_silver_flattened.select("event_id").distinct().count()
 duplicates_count = total_before_dedup - distinct_events
 
 if duplicates_count > 0:
-    print(f"   ⚠️  {duplicates_count} registros duplicados detectados")
+    print(f"     {duplicates_count} registros duplicados detectados")
     
 # Aplicar deduplicação: manter o registro mais recente por event_id
 # Ordena por event_timestamp DESC (principal) e processing_timestamp DESC (desempate)
@@ -214,17 +214,17 @@ df_silver_flattened = df_silver_flattened.distinct()
 
 # Contar após deduplicação
 deduplicated_count = df_silver_flattened.count()
-print(f"   ✅ Registros após deduplicação: {deduplicated_count} (removidos: {total_before_dedup - deduplicated_count})")
+print(f"    Registros após deduplicação: {deduplicated_count} (removidos: {total_before_dedup - deduplicated_count})")
 
 # Mostrar schema Silver flattened
-print("\n   📊 Schema Silver (flattened & deduplicated):")
+print("\n    Schema Silver (flattened & deduplicated):")
 df_silver_flattened.printSchema()
 
 # ============================================================================
 # 4. ENRIQUECIMENTO E KPIS DE SEGURO (COMPATÍVEL COM ESTRUTURA NOVA)
 # ============================================================================
 
-print("\n🧪 ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
+print("\n ETAPA 3: Aplicando enriquecimento e KPIs de seguro...")
 
 # Enriquecer com KPIs de seguro para nova estrutura
 df_silver_enriched = df_silver_flattened.select(
@@ -250,10 +250,10 @@ df_silver_enriched = df_silver_flattened.select(
     F.format_string("%02d", F.dayofmonth(F.col("event_timestamp"))).alias("event_day")
 )
 
-print(f"   ✅ Registros após enriquecimento: {df_silver_enriched.count()}")
+print(f"    Registros após enriquecimento: {df_silver_enriched.count()}")
 
 # Mostrar exemplos de KPIs
-print("\n   🔍 KPIs de seguro calculados:")
+print("\n    KPIs de seguro calculados:")
 df_silver_enriched.select(
     "event_id", "car_chassis", 
     "insurance_status", "insurance_days_expired",
@@ -264,13 +264,13 @@ df_silver_enriched.select(
 # 5. GRAVAÇÃO NO SILVER LAYER (PARTICIONADO POR DATA)
 # ============================================================================
 
-print("\n💾 ETAPA 4: Gravação no Silver Layer...")
+print("\n ETAPA 4: Gravação no Silver Layer...")
 
 # Preparar dados finais
 df_silver_final = df_silver_enriched
 
-print(f"   📊 Total de registros a gravar: {df_silver_final.count()}")
-print(f"   📍 Destino Silver: s3://{args['silver_bucket']}/{args['silver_path']}")
+print(f"    Total de registros a gravar: {df_silver_final.count()}")
+print(f"    Destino Silver: s3://{args['silver_bucket']}/{args['silver_path']}")
 
 # Converter para DynamicFrame para gravação
 dynamic_frame_silver = DynamicFrame.fromDF(df_silver_final, glueContext, "dynamic_frame_silver")
@@ -290,25 +290,25 @@ glueContext.write_dynamic_frame.from_options(
     transformation_ctx="datasink_silver"
 )
 
-print("   ✅ Dados gravados no Silver Layer com sucesso!")
+print("    Dados gravados no Silver Layer com sucesso!")
 
 # ============================================================================
 # 6. ESTATÍSTICAS FINAIS E ENCERRAMENTO
 # ============================================================================
 
-print("\n📊 ESTATÍSTICAS FINAIS:")
-print(f"   📥 Registros lidos do Bronze: {new_records_count}")
-print(f"   📤 Registros gravados no Silver: {df_silver_final.count()}")
-print(f"   🎯 Campos Silver total: {len(df_silver_final.columns)}")
+print("\n ESTATÍSTICAS FINAIS:")
+print(f"    Registros lidos do Bronze: {new_records_count}")
+print(f"    Registros gravados no Silver: {df_silver_final.count()}")
+print(f"    Campos Silver total: {len(df_silver_final.columns)}")
 
 # Mostrar campos Silver criados
-print(f"\n   📋 Campos Silver criados ({len(df_silver_final.columns)}):")
+print(f"\n    Campos Silver criados ({len(df_silver_final.columns)}):")
 for i, col_name in enumerate(df_silver_final.columns, 1):
     print(f"      {i:2d}. {col_name}")
 
 print("\n" + "=" * 80)
-print("🎉 Silver Consolidation Job - CONCLUÍDO COM SUCESSO!")
-print(f"🕒 Timestamp final: {datetime.now().isoformat()}")
+print(" Silver Consolidation Job - CONCLUÍDO COM SUCESSO!")
+print(f" Timestamp final: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # Commit do job
@@ -318,19 +318,19 @@ job.commit()
 # 6. ESTATÍSTICAS FINAIS E ENCERRAMENTO
 # ============================================================================
 
-print("\n📊 ESTATÍSTICAS FINAIS:")
-print(f"   📥 Registros lidos do Bronze: {new_records_count}")
-print(f"   📤 Registros gravados no Silver: {df_silver_final.count()}")
-print(f"   🎯 Campos Silver total: {len(df_silver_final.columns)}")
+print("\n ESTATÍSTICAS FINAIS:")
+print(f"    Registros lidos do Bronze: {new_records_count}")
+print(f"    Registros gravados no Silver: {df_silver_final.count()}")
+print(f"    Campos Silver total: {len(df_silver_final.columns)}")
 
 # Mostrar campos Silver criados
-print(f"\n   📋 Campos Silver criados ({len(df_silver_final.columns)}):")
+print(f"\n    Campos Silver criados ({len(df_silver_final.columns)}):")
 for i, col_name in enumerate(df_silver_final.columns, 1):
     print(f"      {i:2d}. {col_name}")
 
 print("\n" + "=" * 80)
-print("🎉 Silver Consolidation Job - CONCLUÍDO COM SUCESSO!")
-print(f"🕒 Timestamp final: {datetime.now().isoformat()}")
+print(" Silver Consolidation Job - CONCLUÍDO COM SUCESSO!")
+print(f" Timestamp final: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # Commit do job

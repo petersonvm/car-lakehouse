@@ -66,15 +66,15 @@ spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
 spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
 
 print("=" * 80)
-print(f"🚀 Job iniciado: {args['JOB_NAME']}")
-print(f"📅 Timestamp: {datetime.now().isoformat()}")
+print(f" Job iniciado: {args['JOB_NAME']}")
+print(f" Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
 # 2. LEITURA DOS DADOS NOVOS DO BRONZE (ESTRUTURA ATUAL)
 # ============================================================================
 
-print("\n📥 ETAPA 1: Leitura de dados novos do Bronze (Estrutura Atual)...")
+print("\n ETAPA 1: Leitura de dados novos do Bronze (Estrutura Atual)...")
 print(f"   Database: {args['bronze_database']}")
 print(f"   Table: {args['bronze_table']}")
 
@@ -91,23 +91,23 @@ df_bronze_current = bronze_dynamic_frame.toDF()
 
 # Contar registros novos
 new_records_count = df_bronze_current.count()
-print(f"   ✅ Registros novos encontrados: {new_records_count}")
+print(f"    Registros novos encontrados: {new_records_count}")
 
 # Mostrar schema do Bronze (estrutura atual)
-print("\n   📊 Schema Bronze (estrutura atual):")
+print("\n    Schema Bronze (estrutura atual):")
 df_bronze_current.printSchema()
 
 if new_records_count == 0:
-    print("   ℹ️  Nenhum registro novo para processar. Job continuará para manter bookmarks atualizados.")
+    print("   ℹ  Nenhum registro novo para processar. Job continuará para manter bookmarks atualizados.")
 else:
-    print(f"   🔍 Exemplo de dados Bronze:")
+    print(f"    Exemplo de dados Bronze:")
     df_bronze_current.select("carChassis", "Model", "currentMileage").show(2, truncate=False)
 
 # ============================================================================
 # 3. ACHATAMENTO (FLATTENING) DA ESTRUTURA ATUAL
 # ============================================================================
 
-print("\n🔄 ETAPA 2: Achatamento de estruturas aninhadas (estrutura atual)...")
+print("\n ETAPA 2: Achatamento de estruturas aninhadas (estrutura atual)...")
 
 if new_records_count > 0:
     
@@ -115,7 +115,7 @@ if new_records_count > 0:
     # 3.1 ACHATAMENTO PRINCIPAL - Extrair dados dos structs existentes
     # ----------------------------------------------------------------------------
     
-    print("   🔹 1/4: Achatando structs da estrutura atual...")
+    print("    1/4: Achatando structs da estrutura atual...")
     
     # Achatar struct 'metrics'
     df_flattened = df_bronze_current.select(
@@ -165,13 +165,13 @@ if new_records_count > 0:
         F.col("ingest_day")
     )
     
-    print(f"      ✅ {len(df_flattened.columns)} colunas após achatamento")
+    print(f"       {len(df_flattened.columns)} colunas após achatamento")
     
     # ----------------------------------------------------------------------------
     # 3.2 LIMPEZA E PADRONIZAÇÃO
     # ----------------------------------------------------------------------------
     
-    print("   🔹 2/4: Aplicando limpeza e padronização...")
+    print("    2/4: Aplicando limpeza e padronização...")
     
     df_clean = df_flattened.withColumn(
         "Manufacturer",
@@ -184,13 +184,13 @@ if new_records_count > 0:
         F.initcap(F.col("carInsurance_provider"))  # Title Case
     )
     
-    print("      ✅ Padronização aplicada: Manufacturer/provider → Title Case, color → lowercase")
+    print("       Padronização aplicada: Manufacturer/provider → Title Case, color → lowercase")
     
     # ----------------------------------------------------------------------------
     # 3.3 CONVERSÃO DE TIPOS E TIMESTAMPS
     # ----------------------------------------------------------------------------
     
-    print("   🔹 3/4: Convertendo tipos e timestamps...")
+    print("    3/4: Convertendo tipos e timestamps...")
     
     # Converter timestamp strings para timestamp
     df_typed = df_clean.withColumn(
@@ -204,13 +204,13 @@ if new_records_count > 0:
         F.to_date(F.col("carInsurance_validUntil"), "yyyy-MM-dd")
     )
     
-    print("      ✅ Timestamps e datas convertidos")
+    print("       Timestamps e datas convertidos")
     
     # ----------------------------------------------------------------------------
     # 3.4 ENRIQUECIMENTO - KPIs Calculados
     # ----------------------------------------------------------------------------
     
-    print("   🔹 4/4: Calculando KPIs enriquecidos...")
+    print("    4/4: Calculando KPIs enriquecidos...")
     
     df_enriched = df_typed.withColumn(
         "metrics_fuel_level_percentage",
@@ -238,7 +238,7 @@ if new_records_count > 0:
          .otherwise(0)
     )
     
-    print("      ✅ KPIs calculados: fuel_level_percentage, km_per_liter, insurance_status, insurance_days_expired")
+    print("       KPIs calculados: fuel_level_percentage, km_per_liter, insurance_status, insurance_days_expired")
     
     # Criar colunas de partição por data do evento
     df_silver_transformed = df_with_insurance_kpis.withColumn(
@@ -252,11 +252,11 @@ if new_records_count > 0:
         F.lpad(F.dayofmonth(F.col("metrics_metricTimestamp")).cast("string"), 2, "0")
     )
     
-    print(f"   ✅ Transformação completa! {df_silver_transformed.count()} registros transformados")
+    print(f"    Transformação completa! {df_silver_transformed.count()} registros transformados")
     
 else:
     # Criar DataFrame vazio com schema esperado para casos sem dados novos
-    print("   ℹ️  Criando DataFrame vazio com schema esperado...")
+    print("   ℹ  Criando DataFrame vazio com schema esperado...")
     df_silver_transformed = spark.createDataFrame([], schema=None)  # Schema será inferido na próxima execução
 
 
@@ -264,12 +264,12 @@ else:
 # 4. CONSOLIDAÇÃO - CURRENT STATE (Estado Atual por Quilometragem)
 # ============================================================================
 
-print("\n� ETAPA 3: Consolidando para estado atual por quilometragem...")
+print("\n ETAPA 3: Consolidando para estado atual por quilometragem...")
 
 if new_records_count > 0:
     
     # Ler dados existentes na camada Silver
-    print("   📖 1/3: Lendo dados existentes da camada Silver...")
+    print("    1/3: Lendo dados existentes da camada Silver...")
     
     try:
         df_silver_existing = glueContext.create_dynamic_frame.from_catalog(
@@ -277,14 +277,14 @@ if new_records_count > 0:
             table_name=args['silver_table']
         ).toDF()
         
-        print(f"      ✅ {df_silver_existing.count()} registros existentes encontrados")
+        print(f"       {df_silver_existing.count()} registros existentes encontrados")
     except Exception as e:
-        print(f"      ⚠️  Tabela não existe ainda. Será criada: {str(e)}")
+        print(f"        Tabela não existe ainda. Será criada: {str(e)}")
         # Criar DataFrame vazio com schema igual aos novos dados
         df_silver_existing = spark.createDataFrame([], schema=None)  # Schema será inferido
     
     # Unir dados novos + existentes
-    print("   🔄 2/3: Combinando dados novos e existentes...")
+    print("    2/3: Combinando dados novos e existentes...")
     
     print(f"   Registros existentes: {df_silver_existing.count()}")
     print(f"   Registros novos: {df_silver_transformed.count()}")
@@ -298,7 +298,7 @@ if new_records_count > 0:
     print(f"   Total após união: {df_union.count()}")
     
     # Aplicar lógica de consolidação: MAIOR QUILOMETRAGEM por chassis (estado mais atual)
-    print("   🎯 3/3: Aplicando consolidação de estado atual por quilometragem...")
+    print("    3/3: Aplicando consolidação de estado atual por quilometragem...")
     
     # Determinar o registro com maior quilometragem para cada carChassis
     # currentMileage como critério principal + metrics_metricTimestamp como desempate
@@ -315,16 +315,16 @@ if new_records_count > 0:
         F.col("row_number") == 1
     ).drop("row_number")
     
-    print(f"   ✅ Estado atual consolidado: {df_current_state.count()} veículos únicos")
+    print(f"    Estado atual consolidado: {df_current_state.count()} veículos únicos")
     
     # Estatísticas de consolidação
     total_records_before = df_union.count()
     unique_chassis_after = df_current_state.count()
     
-    print(f"   📊 Consolidação: {total_records_before} registros → {unique_chassis_after} veículos únicos")
+    print(f"    Consolidação: {total_records_before} registros → {unique_chassis_after} veículos únicos")
     
     # Mostrar exemplo de consolidação
-    print("\n   📋 Exemplo de registros consolidados:")
+    print("\n    Exemplo de registros consolidados:")
     df_current_state.select(
         "carChassis",
         "currentMileage",
@@ -336,14 +336,14 @@ if new_records_count > 0:
     ).show(5, truncate=False)
     
 else:
-    print("   ℹ️  Nenhum registro novo para consolidar")
+    print("   ℹ  Nenhum registro novo para consolidar")
     df_current_state = spark.createDataFrame([], schema=None)
 
 # ============================================================================
 # 5. ESCRITA NO SILVER (DYNAMIC PARTITION OVERWRITE)
 # ============================================================================
 
-print("\n💾 ETAPA 4: Escrevendo dados consolidados no Silver...")
+print("\n ETAPA 4: Escrevendo dados consolidados no Silver...")
 
 if new_records_count > 0:
     
@@ -362,29 +362,29 @@ if new_records_count > 0:
         .option("compression", "snappy") \
         .save(silver_output_path)
     
-    print(f"   ✅ Dados escritos com sucesso!")
-    print(f"   📦 Registros finais: {df_current_state.count()}")
+    print(f"    Dados escritos com sucesso!")
+    print(f"    Registros finais: {df_current_state.count()}")
     
     # Mostrar partições escritas
     partitions_written = df_current_state.select(
         "event_year", "event_month", "event_day"
     ).distinct().collect()
     
-    print(f"\n   📂 Partições escritas ({len(partitions_written)}):")
+    print(f"\n    Partições escritas ({len(partitions_written)}):")
     for partition in partitions_written:
         print(f"      - event_year={partition.event_year}/event_month={partition.event_month}/event_day={partition.event_day}")
 
 else:
-    print("   ℹ️  Nenhum registro novo para processar - Escrita pulada")
+    print("   ℹ  Nenhum registro novo para processar - Escrita pulada")
 
 # ============================================================================
 # 6. FINALIZAÇÃO DO JOB
 # ============================================================================
 
 print("\n" + "=" * 80)
-print("✅ JOB CONCLUÍDO COM SUCESSO!")
+print(" JOB CONCLUÍDO COM SUCESSO!")
 print("=" * 80)
-print(f"📊 Resumo:")
+print(f" Resumo:")
 print(f"   - Registros Bronze processados: {new_records_count}")
 if new_records_count > 0:
     print(f"   - Registros Silver consolidados: {df_current_state.count()}")
@@ -396,7 +396,7 @@ print("=" * 80)
 # Commit do Job (atualiza bookmarks)
 job.commit()
 
-print("\n🎯 Próximos passos:")
+print("\n Próximos passos:")
 print("   1. Executar Glue Crawler no Silver para atualizar catálogo")
 print("   2. Consultar dados consolidados no Athena") 
 print("   3. Verificar que Insurance KPIs estão funcionando")

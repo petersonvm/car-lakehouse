@@ -70,7 +70,7 @@ logger.info("="*60)
 # ============================================================
 # LEITURA INCREMENTAL - SILVER LAYER (COM JOB BOOKMARKS)
 # ============================================================
-logger.info("📖 Lendo dados Silver com Job Bookmarks (incremental)...")
+logger.info(" Lendo dados Silver com Job Bookmarks (incremental)...")
 
 try:
     # Leitura incremental usando GlueContext e transformation_ctx
@@ -84,24 +84,24 @@ try:
     df_silver = dyf_silver.toDF()
     
     initial_count = df_silver.count()
-    logger.info(f"✅ Registros Silver lidos (novos desde último bookmark): {initial_count}")
+    logger.info(f" Registros Silver lidos (novos desde último bookmark): {initial_count}")
     
     if initial_count == 0:
-        logger.warning("⚠️ Nenhum dado novo para processar (Job Bookmark marca tudo como processado)")
+        logger.warning(" Nenhum dado novo para processar (Job Bookmark marca tudo como processado)")
         logger.info("Finalizando job com sucesso (sem novos alertas)")
         job.commit()
         sys.exit(0)
     
-    logger.info(f"📊 Schema Silver: {df_silver.columns}")
+    logger.info(f" Schema Silver: {df_silver.columns}")
     
 except Exception as e:
-    logger.error(f"❌ Erro ao ler dados Silver: {str(e)}")
+    logger.error(f" Erro ao ler dados Silver: {str(e)}")
     raise
 
 # ============================================================
 # LÓGICA DE FILTRAGEM - KPIs DE ALERTA
 # ============================================================
-logger.info("🔍 Aplicando filtros de KPIs de Performance...")
+logger.info(" Aplicando filtros de KPIs de Performance...")
 
 # Definir limites de alerta (KPIs)
 KPI_ENGINE_TEMP_LIMIT = 100  # Celsius
@@ -120,10 +120,10 @@ df_alerts = df_silver.filter(
 )
 
 alerts_count = df_alerts.count()
-logger.info(f"⚠️ Total de ALERTAS detectados: {alerts_count}")
+logger.info(f" Total de ALERTAS detectados: {alerts_count}")
 
 if alerts_count == 0:
-    logger.info("✅ Nenhum alerta detectado neste lote (todos os valores dentro dos limites)")
+    logger.info(" Nenhum alerta detectado neste lote (todos os valores dentro dos limites)")
     logger.info("Finalizando job com sucesso (sem alertas)")
     job.commit()
     sys.exit(0)
@@ -131,7 +131,7 @@ if alerts_count == 0:
 # ============================================================
 # ENRIQUECIMENTO - CLASSIFICAÇÃO DE ALERTAS
 # ============================================================
-logger.info("🏷️ Classificando tipo de alerta...")
+logger.info(" Classificando tipo de alerta...")
 
 # UDF para determinar o tipo de alerta (pode ter múltiplos tipos por registro)
 def classify_alert(engine_temp, oil_temp, max_speed):
@@ -167,7 +167,7 @@ df_alerts_classified = df_alerts_classified.withColumn(
 )
 
 # Estatísticas por tipo de alerta
-logger.info("📊 Distribuição de alertas por tipo:")
+logger.info(" Distribuição de alertas por tipo:")
 alert_stats = df_alerts_classified.groupBy("alert_type").count().collect()
 for row in alert_stats:
     logger.info(f"   • {row['alert_type']}: {row['count']} alertas")
@@ -175,7 +175,7 @@ for row in alert_stats:
 # ============================================================
 # ESCRITA - GOLD LAYER (APPEND MODE, PARTICIONADO)
 # ============================================================
-logger.info("💾 Escrevendo alertas no Gold Layer...")
+logger.info(" Escrevendo alertas no Gold Layer...")
 
 output_path = f"s3://{args['gold_bucket']}/performance_alerts_log/"
 logger.info(f"Caminho de saída: {output_path}")
@@ -189,18 +189,18 @@ try:
         .partitionBy("alert_type", "event_year", "event_month", "event_day") \
         .parquet(output_path)
     
-    logger.info("✅ Alertas escritos com sucesso no Gold!")
-    logger.info(f"📊 Total de alertas persistidos: {alerts_count}")
+    logger.info(" Alertas escritos com sucesso no Gold!")
+    logger.info(f" Total de alertas persistidos: {alerts_count}")
     
 except Exception as e:
-    logger.error(f"❌ Erro ao escrever no Gold: {str(e)}")
+    logger.error(f" Erro ao escrever no Gold: {str(e)}")
     raise
 
 # ============================================================
 # ESTATÍSTICAS FINAIS
 # ============================================================
 logger.info("="*60)
-logger.info("📈 ESTATÍSTICAS FINAIS DO JOB")
+logger.info(" ESTATÍSTICAS FINAIS DO JOB")
 logger.info("="*60)
 logger.info(f"Registros Silver processados: {initial_count}")
 logger.info(f"Alertas gerados: {alerts_count}")
@@ -210,4 +210,4 @@ logger.info("="*60)
 
 # Commit do Job (atualiza Job Bookmark)
 job.commit()
-logger.info("✅ Job finalizado com sucesso!")
+logger.info(" Job finalizado com sucesso!")

@@ -39,30 +39,30 @@ $Jobs = @(
 function Write-StepHeader {
     param([string]$StepNumber, [string]$Description)
     Write-Host "`n" -ForegroundColor Cyan
-    Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Green
     Write-Host "  PASSO $StepNumber`: $Description" -ForegroundColor White
-    Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Green
     Write-Host ""
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✅ $Message" -ForegroundColor Green
+    Write-Host " $Message" -ForegroundColor Green
 }
 
 function Write-Error {
     param([string]$Message)
-    Write-Host "❌ $Message" -ForegroundColor Red
+    Write-Host " $Message" -ForegroundColor Red
 }
 
 function Write-Warning {
     param([string]$Message)
-    Write-Host "⚠️  $Message" -ForegroundColor Yellow
+    Write-Host "  $Message" -ForegroundColor Yellow
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "ℹ️  $Message" -ForegroundColor Cyan
+    Write-Host "ℹ  $Message" -ForegroundColor Cyan
 }
 
 function Wait-WithProgress {
@@ -71,8 +71,8 @@ function Wait-WithProgress {
     Write-Host "`n⏳ $Message" -ForegroundColor Cyan
     for ($i = 1; $i -le $Seconds; $i++) {
         $percent = [math]::Round(($i / $Seconds) * 100)
-        $bar = "█" * [math]::Floor($percent / 5)
-        $space = "░" * (20 - [math]::Floor($percent / 5))
+        $bar = "" * [math]::Floor($percent / 5)
+        $space = "" * (20 - [math]::Floor($percent / 5))
         Write-Host -NoNewline "`r   [$bar$space] $percent% ($i/$Seconds s)"
         Start-Sleep -Seconds 1
     }
@@ -85,9 +85,9 @@ function Wait-WithProgress {
 
 Clear-Host
 Write-Host "`n"
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  🔧 RECUPERAÇÃO AUTOMÁTICA DO WORKFLOW GLUE" -ForegroundColor White -BackgroundColor DarkBlue
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "" -ForegroundColor Cyan
+Write-Host "   RECUPERAÇÃO AUTOMÁTICA DO WORKFLOW GLUE" -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "" -ForegroundColor Cyan
 Write-Host "`nWorkflow: $WorkflowName" -ForegroundColor White
 Write-Host "Data/Hora: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')" -ForegroundColor Gray
 Write-Host ""
@@ -109,7 +109,7 @@ if (-not $AutoApprove) {
     
     $confirmation = Read-Host "Deseja continuar? (S/N)"
     if ($confirmation -ne 'S' -and $confirmation -ne 's') {
-        Write-Host "`n❌ Operação cancelada pelo usuário." -ForegroundColor Red
+        Write-Host "`n Operação cancelada pelo usuário." -ForegroundColor Red
         exit 0
     }
 }
@@ -135,16 +135,16 @@ try {
     Write-Host "  Conclusão: $($runStatus.CompletedOn)" -ForegroundColor Gray
     Write-Host ""
     Write-Host "Estatísticas:" -ForegroundColor Cyan
-    Write-Host "  ✅ Sucesso: $($runStatus.Statistics.SucceededActions)" -ForegroundColor Green
-    Write-Host "  ❌ Falhas: $($runStatus.Statistics.FailedActions)" -ForegroundColor $(if($runStatus.Statistics.FailedActions -gt 0){'Red'}else{'Gray'})
-    Write-Host "  📊 Total: $($runStatus.Statistics.TotalActions)" -ForegroundColor White
+    Write-Host "   Sucesso: $($runStatus.Statistics.SucceededActions)" -ForegroundColor Green
+    Write-Host "   Falhas: $($runStatus.Statistics.FailedActions)" -ForegroundColor $(if($runStatus.Statistics.FailedActions -gt 0){'Red'}else{'Gray'})
+    Write-Host "   Total: $($runStatus.Statistics.TotalActions)" -ForegroundColor White
     
     if ($runStatus.Statistics.FailedActions -eq 0 -and $runStatus.Status -eq "COMPLETED") {
         Write-Success "Workflow está operacional! Recuperação pode não ser necessária."
         Write-Host ""
         $continue = Read-Host "Deseja continuar mesmo assim? (S/N)"
         if ($continue -ne 'S' -and $continue -ne 's') {
-            Write-Host "`n✅ Script finalizado." -ForegroundColor Green
+            Write-Host "`n Script finalizado." -ForegroundColor Green
             exit 0
         }
     } else {
@@ -218,22 +218,22 @@ if (-not $SkipBookmarkReset) {
             $result = aws glue reset-job-bookmark --job-name $jobName 2>&1
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host " ✅" -ForegroundColor Green
+                Write-Host " " -ForegroundColor Green
                 $bookmarksResetados++
             }
             else {
                 if ($result -like "*EntityNotFoundException*") {
-                    Write-Host " ⚠️  (não executado ainda)" -ForegroundColor Yellow
+                    Write-Host "   (não executado ainda)" -ForegroundColor Yellow
                     $bookmarksNaoEncontrados++
                 }
                 else {
-                    Write-Host " ❌" -ForegroundColor Red
+                    Write-Host " " -ForegroundColor Red
                     Write-Warning "    Erro: $result"
                 }
             }
         }
         catch {
-            Write-Host " ❌" -ForegroundColor Red
+            Write-Host " " -ForegroundColor Red
             Write-Warning "    Exceção: $_"
         }
     }
@@ -265,7 +265,7 @@ try {
 }
 catch {
     Write-Error "Erro ao iniciar workflow: $_"
-    Write-Host "`n❌ Não foi possível iniciar o workflow. Verifique os logs." -ForegroundColor Red
+    Write-Host "`n Não foi possível iniciar o workflow. Verifique os logs." -ForegroundColor Red
     exit 1
 }
 
@@ -308,9 +308,9 @@ while ($iteration -lt $maxIterations -and -not $completed) {
         Write-Host $runData.Status -ForegroundColor $statusColor
         
         # Estatísticas
-        Write-Host "    ✅ Sucesso: $($runData.Statistics.SucceededActions)/$($runData.Statistics.TotalActions)" -ForegroundColor Green
-        Write-Host "    ❌ Falhas: $($runData.Statistics.FailedActions)" -ForegroundColor $(if($runData.Statistics.FailedActions -gt 0){'Red'}else{'Gray'})
-        Write-Host "    🔄 Rodando: $($runData.Statistics.RunningActions)" -ForegroundColor Yellow
+        Write-Host "     Sucesso: $($runData.Statistics.SucceededActions)/$($runData.Statistics.TotalActions)" -ForegroundColor Green
+        Write-Host "     Falhas: $($runData.Statistics.FailedActions)" -ForegroundColor $(if($runData.Statistics.FailedActions -gt 0){'Red'}else{'Gray'})
+        Write-Host "     Rodando: $($runData.Statistics.RunningActions)" -ForegroundColor Yellow
         
         if ($runData.Status -ne "RUNNING") {
             $completed = $true
@@ -366,11 +366,11 @@ try {
     foreach ($expectedTable in $expectedTables) {
         $found = $tables.TableList | Where-Object { $_.Name -eq $expectedTable }
         if ($found) {
-            Write-Host "  ✅ $expectedTable" -ForegroundColor Green
+            Write-Host "   $expectedTable" -ForegroundColor Green
             Write-Host "     Atualizada: $($found.UpdateTime)" -ForegroundColor Gray
         }
         else {
-            Write-Host "  ❌ $expectedTable (NÃO ENCONTRADA)" -ForegroundColor Red
+            Write-Host "   $expectedTable (NÃO ENCONTRADA)" -ForegroundColor Red
         }
     }
     
@@ -393,22 +393,22 @@ catch {
 # ============================================================
 
 Write-Host "`n"
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  📊 RESUMO DA RECUPERAÇÃO" -ForegroundColor White -BackgroundColor DarkBlue
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "" -ForegroundColor Cyan
+Write-Host "   RESUMO DA RECUPERAÇÃO" -ForegroundColor White -BackgroundColor DarkBlue
+Write-Host "" -ForegroundColor Cyan
 Write-Host ""
 
 if ($completed -and $runData.Status -eq "COMPLETED" -and $runData.Statistics.FailedActions -eq 0) {
-    Write-Host "🎉 RECUPERAÇÃO CONCLUÍDA COM SUCESSO!" -ForegroundColor Green -BackgroundColor Black
+    Write-Host " RECUPERAÇÃO CONCLUÍDA COM SUCESSO!" -ForegroundColor Green -BackgroundColor Black
     Write-Host ""
-    Write-Host "✅ Workflow executado: 6/6 ações com sucesso" -ForegroundColor Green
-    Write-Host "✅ Todas as tabelas catalogadas" -ForegroundColor Green
-    Write-Host "✅ Pipeline 100% operacional" -ForegroundColor Green
+    Write-Host " Workflow executado: 6/6 ações com sucesso" -ForegroundColor Green
+    Write-Host " Todas as tabelas catalogadas" -ForegroundColor Green
+    Write-Host " Pipeline 100% operacional" -ForegroundColor Green
     Write-Host ""
     Write-Success "Ambiente pronto para uso!"
 }
 elseif ($completed -and $runData.Statistics.FailedActions -gt 0) {
-    Write-Host "⚠️  RECUPERAÇÃO PARCIAL" -ForegroundColor Yellow -BackgroundColor Black
+    Write-Host "  RECUPERAÇÃO PARCIAL" -ForegroundColor Yellow -BackgroundColor Black
     Write-Host ""
     Write-Warning "Workflow executado com $($runData.Statistics.FailedActions) falha(s)"
     Write-Host ""
@@ -418,7 +418,7 @@ elseif ($completed -and $runData.Statistics.FailedActions -gt 0) {
     Write-Host "  3. Execute comandos de diagnóstico específicos" -ForegroundColor Gray
 }
 else {
-    Write-Host "❌ RECUPERAÇÃO NÃO CONCLUÍDA" -ForegroundColor Red -BackgroundColor Black
+    Write-Host " RECUPERAÇÃO NÃO CONCLUÍDA" -ForegroundColor Red -BackgroundColor Black
     Write-Host ""
     Write-Warning "Workflow pode ainda estar em execução ou ter falhado"
     Write-Host ""
@@ -427,6 +427,6 @@ else {
 }
 
 Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+Write-Host "" -ForegroundColor Cyan
 Write-Host "Finalizado em: $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')" -ForegroundColor Gray
 Write-Host ""

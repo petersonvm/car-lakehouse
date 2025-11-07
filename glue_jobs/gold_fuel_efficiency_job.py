@@ -111,16 +111,16 @@ try:
     df_silver_new = dyf_silver_new.toDF()
     new_records_count = df_silver_new.count()
     
-    print(f"✅ Silver data read successfully")
+    print(f" Silver data read successfully")
     print(f"   New records to process: {new_records_count}")
     
     if new_records_count == 0:
-        print("⚠️  No new data to process. Job will exit gracefully.")
+        print("  No new data to process. Job will exit gracefully.")
         job.commit()
         sys.exit(0)
     
 except Exception as e:
-    print(f"❌ ERROR reading Silver data: {str(e)}")
+    print(f" ERROR reading Silver data: {str(e)}")
     raise
 
 # ============================================================
@@ -158,7 +158,7 @@ try:
     )
     
     delta_records = df_delta.count()
-    print(f"✅ Delta aggregation completed")
+    print(f" Delta aggregation completed")
     print(f"   Aggregated records (new): {delta_records}")
     
     # Show sample
@@ -166,7 +166,7 @@ try:
     df_delta.show(5, truncate=False)
     
 except Exception as e:
-    print(f"❌ ERROR during delta aggregation: {str(e)}")
+    print(f" ERROR during delta aggregation: {str(e)}")
     raise
 
 # ============================================================
@@ -187,7 +187,7 @@ try:
         df_gold_existing = spark.read.format("parquet").load(OUTPUT_PATH)
         
         existing_records = df_gold_existing.count()
-        print(f"✅ Existing Gold data read successfully")
+        print(f" Existing Gold data read successfully")
         print(f"   Existing aggregation records: {existing_records}")
         
         # Rename columns to match delta naming for union
@@ -213,10 +213,10 @@ try:
         ])
         
         df_gold_existing = spark.createDataFrame([], schema)
-        print("✅ Empty DataFrame created (first run scenario)")
+        print(" Empty DataFrame created (first run scenario)")
         
 except Exception as e:
-    print(f"❌ ERROR reading existing Gold data: {str(e)}")
+    print(f" ERROR reading existing Gold data: {str(e)}")
     raise
 
 # ============================================================
@@ -230,7 +230,7 @@ try:
     df_combined = df_delta.union(df_gold_existing)
     
     combined_records = df_combined.count()
-    print(f"✅ Union completed")
+    print(f" Union completed")
     print(f"   Combined records (before re-aggregation): {combined_records}")
     
     # Final aggregation - sum all deltas to get updated totals
@@ -257,7 +257,7 @@ try:
     )
     
     final_records = df_final.count()
-    print(f"✅ Final aggregation completed")
+    print(f" Final aggregation completed")
     print(f"   Final aggregation records: {final_records}")
     
     # Show sample results
@@ -274,7 +274,7 @@ try:
     ).show(truncate=False)
     
 except Exception as e:
-    print(f"❌ ERROR during merge and final aggregation: {str(e)}")
+    print(f" ERROR during merge and final aggregation: {str(e)}")
     raise
 
 # ============================================================
@@ -290,14 +290,14 @@ try:
         .partitionBy("event_year", "event_month") \
         .parquet(OUTPUT_PATH)
     
-    print(f"✅ Data written successfully to Gold layer")
+    print(f" Data written successfully to Gold layer")
     print(f"   Output path: {OUTPUT_PATH}")
     print(f"   Mode: OVERWRITE (full table refresh)")
     print(f"   Partitioning: event_year, event_month")
     print(f"   Records written: {final_records}")
     
 except Exception as e:
-    print(f"❌ ERROR writing to Gold layer: {str(e)}")
+    print(f" ERROR writing to Gold layer: {str(e)}")
     raise
 
 # ============================================================

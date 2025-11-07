@@ -35,9 +35,9 @@ param(
     [string]$Stage
 )
 
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # CONFIGURAÇÕES
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 $WorkflowName = "datalake-pipeline-silver-etl-workflow-dev"
 $OldJobName = "datalake-pipeline-gold-performance-alerts-dev"
@@ -48,15 +48,15 @@ $OldTableName = "performance_alerts_log"
 $NewTableName = "performance_alerts_log_slim"
 $Database = "datalake-pipeline-catalog-dev"
 
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # FUNÇÕES AUXILIARES
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 function Write-StageHeader {
     param([string]$Title)
-    Write-Host "`n╔════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "║  $Title" -ForegroundColor White
-    Write-Host "╚════════════════════════════════════════════════════════════╝`n" -ForegroundColor Cyan
+    Write-Host "`n" -ForegroundColor Cyan
+    Write-Host "  $Title" -ForegroundColor White
+    Write-Host "`n" -ForegroundColor Cyan
 }
 
 function Write-Step {
@@ -66,22 +66,22 @@ function Write-Step {
 
 function Write-Success {
     param([string]$Message)
-    Write-Host "✅ $Message" -ForegroundColor Green
+    Write-Host " $Message" -ForegroundColor Green
 }
 
 function Write-Error {
     param([string]$Message)
-    Write-Host "❌ $Message" -ForegroundColor Red
+    Write-Host " $Message" -ForegroundColor Red
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "ℹ️  $Message" -ForegroundColor Gray
+    Write-Host "ℹ  $Message" -ForegroundColor Gray
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # STAGE 1: DEPLOY
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 if ($Stage -eq "deploy") {
     Write-StageHeader "STAGE 1: DEPLOY - Novos Recursos SLIM"
@@ -109,13 +109,13 @@ if ($Stage -eq "deploy") {
     Write-Info "  • 1 Trigger atualizado (workflow)"
     
     # Passo 2: Confirmação
-    Write-Host "`n📋 Resumo das mudanças:" -ForegroundColor Cyan
+    Write-Host "`n Resumo das mudanças:" -ForegroundColor Cyan
     Write-Host "   • Novos recursos: ~16 recursos"
     Write-Host "   • Recursos atualizados: 1 (workflow trigger)"
     Write-Host "   • Custo adicional: Mínimo (mesmo tipo de recursos)"
     Write-Host "   • Economia esperada: ~80% em armazenamento Gold"
     
-    $confirmation = Read-Host "`n❓ Deseja aplicar estas mudanças? (yes/no)"
+    $confirmation = Read-Host "`n Deseja aplicar estas mudanças? (yes/no)"
     if ($confirmation -ne "yes") {
         Write-Info "Deploy cancelado pelo usuário"
         exit 0
@@ -168,19 +168,19 @@ if ($Stage -eq "deploy") {
     Start-Sleep -Seconds 90
     Write-Success "Crawler concluído"
     
-    Write-Host "`n╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║  ✅ DEPLOY CONCLUÍDO COM SUCESSO!                         ║" -ForegroundColor White
-    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "`n" -ForegroundColor Green
+    Write-Host "   DEPLOY CONCLUÍDO COM SUCESSO!                         " -ForegroundColor White
+    Write-Host "" -ForegroundColor Green
     
-    Write-Host "`n📊 Próximos passos:" -ForegroundColor Cyan
+    Write-Host "`n Próximos passos:" -ForegroundColor Cyan
     Write-Host "   1. Execute: .\Migrate-AlertsPipeline.ps1 -Stage validate"
     Write-Host "   2. Compare tabelas antiga vs nova"
     Write-Host "   3. Após validação: .\Migrate-AlertsPipeline.ps1 -Stage cleanup"
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # STAGE 2: VALIDATE
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 if ($Stage -eq "validate") {
     Write-StageHeader "STAGE 2: VALIDATE - Validação da Tabela SLIM"
@@ -200,8 +200,8 @@ if ($Stage -eq "validate") {
     Write-Success "Tabela $NewTableName encontrada"
     
     # Passo 2: Comparar schemas
-    Write-Host "`n📊 Comparação de Schemas:" -ForegroundColor Cyan
-    Write-Host "`n🔴 Tabela ANTIGA ($OldTableName):" -ForegroundColor Red
+    Write-Host "`n Comparação de Schemas:" -ForegroundColor Cyan
+    Write-Host "`n Tabela ANTIGA ($OldTableName):" -ForegroundColor Red
     Write-Host "   • Colunas: $($oldTable.StorageDescriptor.Columns.Count)"
     Write-Host "   • Location: $($oldTable.StorageDescriptor.Location)"
     Write-Host "   • Partitions: $($oldTable.PartitionKeys.Count) ($($oldTable.PartitionKeys.Name -join ', '))"
@@ -212,10 +212,10 @@ if ($Stage -eq "validate") {
     Write-Host "   • Partitions: $($newTable.PartitionKeys.Count) ($($newTable.PartitionKeys.Name -join ', '))"
     
     $reduction = [math]::Round((1 - $newTable.StorageDescriptor.Columns.Count / $oldTable.StorageDescriptor.Columns.Count) * 100, 1)
-    Write-Host "`n💰 Redução de colunas: $reduction%" -ForegroundColor Green
+    Write-Host "`n Redução de colunas: $reduction%" -ForegroundColor Green
     
     # Passo 3: Schema detalhado
-    Write-Host "`n📋 Schema SLIM (7 colunas essenciais):" -ForegroundColor Cyan
+    Write-Host "`n Schema SLIM (7 colunas essenciais):" -ForegroundColor Cyan
     $newTable.StorageDescriptor.Columns | ForEach-Object {
         Write-Host "   • $($_.Name) ($($_.Type))" -ForegroundColor White
     }
@@ -239,7 +239,7 @@ if ($Stage -eq "validate") {
     if ($queryStatus.QueryExecution.Status.State -eq "SUCCEEDED") {
         $results = aws athena get-query-results --query-execution-id $queryId | ConvertFrom-Json
         Write-Success "Query executada com sucesso"
-        Write-Host "`n📊 Estatísticas da tabela SLIM:" -ForegroundColor Cyan
+        Write-Host "`n Estatísticas da tabela SLIM:" -ForegroundColor Cyan
         $row = $results.ResultSet.Rows[1]
         Write-Host "   • Total de alertas: $($row.Data[0].VarCharValue)" -ForegroundColor White
         Write-Host "   • Carros únicos: $($row.Data[1].VarCharValue)" -ForegroundColor White
@@ -248,9 +248,9 @@ if ($Stage -eq "validate") {
         Write-Error "Query falhou: $($queryStatus.QueryExecution.Status.State)"
     }
     
-    Write-Host "`n╔════════════════════════════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "║  ✅ VALIDAÇÃO CONCLUÍDA!                                  ║" -ForegroundColor White
-    Write-Host "╚════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "`n" -ForegroundColor Green
+    Write-Host "   VALIDAÇÃO CONCLUÍDA!                                  " -ForegroundColor White
+    Write-Host "" -ForegroundColor Green
     
     Write-Host "`n[QUERIES] Execute no Athena:" -ForegroundColor Cyan
     Write-Host ""
@@ -273,14 +273,14 @@ if ($Stage -eq "validate") {
     Write-Host "   .\Migrate-AlertsPipeline.ps1 -Stage cleanup"
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 # STAGE 3: CLEANUP
-# ═══════════════════════════════════════════════════════════════════════════
+# 
 
 if ($Stage -eq "cleanup") {
     Write-StageHeader "STAGE 3: CLEANUP - Remoção de Recursos Antigos"
     
-    Write-Host "⚠️  ATENÇÃO: Esta operação é IRREVERSÍVEL!" -ForegroundColor Red
+    Write-Host "  ATENÇÃO: Esta operação é IRREVERSÍVEL!" -ForegroundColor Red
     Write-Host "`nRecursos que serão REMOVIDOS:" -ForegroundColor Yellow
     Write-Host "   1. Glue Job: $OldJobName"
     Write-Host "   2. Glue Crawler: $OldCrawlerName"
@@ -290,7 +290,7 @@ if ($Stage -eq "cleanup") {
     
     Write-Host "`nDados S3 NÃO serão deletados (backup manual necessário)" -ForegroundColor Cyan
     
-    $confirmation = Read-Host "`n❓ Deseja REALMENTE remover os recursos antigos? (type 'DELETE' to confirm)"
+    $confirmation = Read-Host "`n Deseja REALMENTE remover os recursos antigos? (type 'DELETE' to confirm)"
     if ($confirmation -ne "DELETE") {
         Write-Info "Cleanup cancelado pelo usuário"
         exit 0

@@ -127,7 +127,7 @@ def create_car_bronze_table(environment: str = "dev"):
         # Check if table already exists
         try:
             glue_client.get_table(DatabaseName=database_name, Name=table_name)
-            print(f"⚠️  Table '{table_name}' already exists in database '{database_name}'")
+            print(f"  Table '{table_name}' already exists in database '{database_name}'")
             print("   No action taken. Delete the table first if you want to recreate it.")
             return False
         except ClientError as e:
@@ -141,18 +141,18 @@ def create_car_bronze_table(environment: str = "dev"):
             TableInput=table_input
         )
         
-        print(f"✅ Table '{table_name}' created successfully!")
+        print(f" Table '{table_name}' created successfully!")
         print(f"   Database: {database_name}")
         print(f"   Location: {location}")
         print(f"   Partition Keys: ingest_year, ingest_month, ingest_day")
-        print(f"\n📝 Next steps:")
+        print(f"\n Next steps:")
         print(f"   1. Run the Bronze crawler to discover partitions")
         print(f"   2. The crawler will UPDATE this table (not create a new one)")
         
         return True
         
     except ClientError as e:
-        print(f"❌ Error creating table: {e}")
+        print(f" Error creating table: {e}")
         return False
 
 if __name__ == "__main__":
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    print(f"🚀 Creating car_bronze table for environment: {args.environment}\n")
+    print(f" Creating car_bronze table for environment: {args.environment}\n")
     success = create_car_bronze_table(args.environment)
     
     exit(0 if success else 1)
