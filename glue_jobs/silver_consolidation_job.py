@@ -2,19 +2,19 @@
 AWS Glue ETL Job - Silver Layer Consolidation
 ==========================================================================
 
-Objetivo:
-- Ler dados do Bronze via Glue Catalog (tabela car_bronze)
-- Aplicar achatamento das estruturas aninhadas
-- Consolidar estado atual por veículo
-- Manter KPIs de seguro compatíveis
-- Escrever resultado Silver particionado
+Objective:
+- Read data from Bronze via Glue Catalog (table car_bronze)
+- Apply flattening of nested structures
+- Consolidate current state per vehicle
+- Maintain compatible insurance KPIs
+- Write partitioned Silver result
 
-Fonte Bronze:
-- Tabela: car_bronze (Glue Data Catalog)
-- Formato: Parquet com structs nested
-- Partições: ingest_year, ingest_month, ingest_day
+Bronze Source:
+- Table: car_bronze (Glue Data Catalog)
+- Format: Parquet with nested structs
+- Partitions: ingest_year, ingest_month, ingest_day
 
-Estrutura Bronze (car_bronze):
+Bronze Structure (car_bronze):
 - event_id, event_primary_timestamp, carChassis
 - vehicle_static_info.data: Model, year, Manufacturer, gasType, etc
 - vehicle_dynamic_state.insurance_info.data: provider, policy_number, validUntil
@@ -23,13 +23,13 @@ Estrutura Bronze (car_bronze):
 - trip_data.trip_summary.data: tripStartTimestamp, tripMileage, tripFuelLiters
 - trip_data.vehicle_telemetry_snapshot.data: currentMileage, fuelAvailableLiters, etc
 
-Resultado Silver:
-- Campos flattened com nomenclatura padronizada
-- 1 registro por event_id (sem consolidação por car nesta versão)
-- Particionado por data do evento
+Silver Result:
+- Flattened fields with standardized nomenclature
+- 1 record per event_id (no consolidation per car in this version)
+- Partitioned by event date
 
-Autor: Sistema de Data Lakehouse  
-Data: 2025-11-05 (Lê de car_bronze via Glue Catalog)
+Author: Data Lakehouse System  
+Date: 2025-11-05 (Reads from car_bronze via Glue Catalog)
 """
 
 import sys
@@ -46,7 +46,7 @@ from pyspark.sql.types import TimestampType, DateType, DoubleType, StructType
 from datetime import datetime
 
 # ============================================================================
-# 1. INICIALIZAÇÃO DO JOB
+# 1. JOB INITIALIZATION
 # ============================================================================
 
 # Obter parâmetros do Job
@@ -74,14 +74,14 @@ print(f" Timestamp: {datetime.now().isoformat()}")
 print("=" * 80)
 
 # ============================================================================
-# 2. LEITURA DOS DADOS DO BRONZE VIA GLUE CATALOG
+# 2. DATA READING DO BRONZE VIA GLUE CATALOG
 # ============================================================================
 
-print("\n ETAPA 1: Leitura de dados do Bronze via Glue Catalog...")
+print("\n ETAPA 1: Leitura de data do Bronze via Glue Catalog...")
 print(f"   Database: {args['bronze_database']}")
 print(f"   Table: {args['bronze_table']}")
 
-# Ler dados da tabela Bronze do Glue Catalog
+# Ler data da table Bronze do Glue Catalog
 bronze_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
     database=args['bronze_database'],
     table_name=args['bronze_table']
@@ -90,7 +90,7 @@ bronze_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
 # Converter para DataFrame
 df_bronze = bronze_dynamic_frame.toDF()
 
-# Contar registros
+# Contar records
 new_records_count = df_bronze.count()
 print(f"    Registros encontrados: {new_records_count}")
 
@@ -99,11 +99,11 @@ print("\n    Schema Bronze (car_bronze):")
 df_bronze.printSchema()
 
 if new_records_count == 0:
-    print("   ℹ  Nenhum registro para processar.")
+    print("   ℹ  Nenhum record para processar.")
     job.commit()
     sys.exit(0)
 else:
-    print(f"    Exemplo de dados Bronze:")
+    print(f"    Exemplo de data Bronze:")
     df_bronze.select("event_id", "carChassis").show(2, truncate=False)
 
 # ============================================================================
@@ -178,15 +178,15 @@ df_silver_flattened = df_bronze.select(
     F.col("trip_data.vehicle_telemetry_snapshot.data.tire_pressures_psi.rear_right").alias("tire_pressure_rear_right_psi")
 )
 
-# Contar registros após flattening
+# Contar records após flattening
 flattened_count = df_silver_flattened.count()
 print(f"    Registros após flattening: {flattened_count}")
 
 # ============================================================================
-# 3.5. DEDUPLICAÇÃO POR EVENT_ID
+# 3.5. DEDUPLICATION POR EVENT_ID
 # ============================================================================
 
-print("\n ETAPA 2.5: Aplicando deduplicação por event_id...")
+print("\n ETAPA 2.5: Applying deduplication por event_id...")
 
 # Contar duplicatas antes
 total_before_dedup = df_silver_flattened.count()
@@ -194,9 +194,9 @@ distinct_events = df_silver_flattened.select("event_id").distinct().count()
 duplicates_count = total_before_dedup - distinct_events
 
 if duplicates_count > 0:
-    print(f"     {duplicates_count} registros duplicados detectados")
+    print(f"     {duplicates_count} records duplicados detectados")
     
-# Aplicar deduplicação: manter o registro mais recente por event_id
+# Aplicar deduplicação: manter o record mais recente por event_id
 # Ordena por event_timestamp DESC (principal) e processing_timestamp DESC (desempate)
 # Isso garante que mantemos o evento com timestamp mais recente e, em caso de empate,
 # aquele que foi processado mais recentemente
@@ -209,12 +209,12 @@ df_silver_flattened = df_silver_flattened.withColumn("row_num", F.row_number().o
     .drop("row_num")
 
 # Aplicar DISTINCT para remover duplicatas 100% idênticas (edge case)
-# Quando todos os campos são iguais, o row_number não é determinístico
+# Quando todos os fields são iguais, o row_number não é determinístico
 df_silver_flattened = df_silver_flattened.distinct()
 
 # Contar após deduplicação
 deduplicated_count = df_silver_flattened.count()
-print(f"    Registros após deduplicação: {deduplicated_count} (removidos: {total_before_dedup - deduplicated_count})")
+print(f"    Records after deduplication: {deduplicated_count} (removidos: {total_before_dedup - deduplicated_count})")
 
 # Mostrar schema Silver flattened
 print("\n    Schema Silver (flattened & deduplicated):")
@@ -266,16 +266,16 @@ df_silver_enriched.select(
 
 print("\n ETAPA 4: Gravação no Silver Layer...")
 
-# Preparar dados finais
+# Preparar data finais
 df_silver_final = df_silver_enriched
 
-print(f"    Total de registros a gravar: {df_silver_final.count()}")
+print(f"    Total de records a gravar: {df_silver_final.count()}")
 print(f"    Destino Silver: s3://{args['silver_bucket']}/{args['silver_path']}")
 
 # Converter para DynamicFrame para gravação
 dynamic_frame_silver = DynamicFrame.fromDF(df_silver_final, glueContext, "dynamic_frame_silver")
 
-# Gravar no Silver (particionado por data do evento)
+# Gravar no Silver (partitioned por data do evento)
 glueContext.write_dynamic_frame.from_options(
     frame=dynamic_frame_silver,
     connection_type="s3",
@@ -297,11 +297,11 @@ print("    Dados gravados no Silver Layer com sucesso!")
 # ============================================================================
 
 print("\n ESTATÍSTICAS FINAIS:")
-print(f"    Registros lidos do Bronze: {new_records_count}")
+print(f"    Records read from Bronze: {new_records_count}")
 print(f"    Registros gravados no Silver: {df_silver_final.count()}")
 print(f"    Campos Silver total: {len(df_silver_final.columns)}")
 
-# Mostrar campos Silver criados
+# Mostrar fields Silver criados
 print(f"\n    Campos Silver criados ({len(df_silver_final.columns)}):")
 for i, col_name in enumerate(df_silver_final.columns, 1):
     print(f"      {i:2d}. {col_name}")
@@ -319,11 +319,11 @@ job.commit()
 # ============================================================================
 
 print("\n ESTATÍSTICAS FINAIS:")
-print(f"    Registros lidos do Bronze: {new_records_count}")
+print(f"    Records read from Bronze: {new_records_count}")
 print(f"    Registros gravados no Silver: {df_silver_final.count()}")
 print(f"    Campos Silver total: {len(df_silver_final.columns)}")
 
-# Mostrar campos Silver criados
+# Mostrar fields Silver criados
 print(f"\n    Campos Silver criados ({len(df_silver_final.columns)}):")
 for i, col_name in enumerate(df_silver_final.columns, 1):
     print(f"      {i:2d}. {col_name}")

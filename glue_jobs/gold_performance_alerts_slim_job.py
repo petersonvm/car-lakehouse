@@ -7,8 +7,8 @@ AWS GLUE ETL JOB: Gold Performance Alerts - SLIM (Optimized)
     Pipeline ETL OTIMIZADO para detectar alertas de performance de veículos.
     
     **DIFERENÇA CRÍTICA vs. Pipeline Antigo:**
-    -  Antigo: Copiava ~36 colunas (Model, Manufacturer, market_price, etc.)
-    -  Novo: Seleciona APENAS 7 colunas essenciais (Quem, Quando, O Quê, Valor)
+    -  Antigo: Copiava ~36 columns (Model, Manufacturer, market_price, etc.)
+    -  Novo: Seleciona APENAS 7 columns essenciais (Quem, Quando, O Quê, Valor)
     -  Redução: ~80% menos armazenamento e custo
 
  INPUT:
@@ -37,10 +37,10 @@ AWS GLUE ETL JOB: Gold Performance Alerts - SLIM (Optimized)
      event_day (string) - Partição
 
  OTIMIZAÇÕES APLICADAS:
-    -  .select() para apenas colunas necessárias
+    -  .select() para apenas columns necessárias
     -  Particionamento multi-nível (alert_type + data)
     -  Job Bookmarks para processamento incremental
-    -  Sem duplicação de dados do Silver Layer
+    -  Sem duplicação de data do Silver Layer
 
 
 """
@@ -55,7 +55,7 @@ from pyspark.sql.functions import col, when, lit, current_timestamp
 from datetime import datetime
 
 # 
-# 1. INICIALIZAÇÃO DO JOB
+# 1. JOB INITIALIZATION
 # 
 
 # Capturar argumentos passados pelo Job
@@ -95,7 +95,7 @@ try:
     # Leitura incremental com transformation_ctx (habilita Job Bookmarks)
     dyf_silver_telemetry = glueContext.create_dynamic_frame.from_catalog(
         database=GLUE_DATABASE,
-        table_name="silver_car_telemetry",  # VIEW com mapeamento de colunas (car_chassis → carChassis)
+        table_name="silver_car_telemetry",  # VIEW com mapeamento de columns (car_chassis → carChassis)
         transformation_ctx="read_silver_telemetry_incremental_slim"
     )
     
@@ -116,7 +116,7 @@ except Exception as e:
 print("\n STEP 2: Filtering performance violations...")
 
 try:
-    # Filtrar apenas registros que violaram pelo menos 1 KPI
+    # Filtrar apenas records que violaram pelo menos 1 KPI
     df_alerts = df_silver.filter(
         (col("engine_temp_celsius") > 100) |
         (col("oil_temp_celsius") > 110) |
@@ -144,7 +144,7 @@ except Exception as e:
 print("\n  STEP 3: Enriching with alert_type and alert_value...")
 
 try:
-    # Criar coluna alert_type (classificação do tipo de alerta)
+    # Criar column alert_type (classificação do tipo de alerta)
     df_enriched = df_alerts.withColumn(
         "alert_type",
         when(col("engine_temp_celsius") > 100, lit("OVERHEAT_ENGINE"))
@@ -153,7 +153,7 @@ try:
         .otherwise(lit("UNKNOWN"))
     )
     
-    # Criar coluna alert_value (captura o valor que disparou o alerta)
+    # Criar column alert_value (captura o valor que disparou o alerta)
     df_enriched = df_enriched.withColumn(
         "alert_value",
         when(col("engine_temp_celsius") > 100, col("engine_temp_celsius"))
@@ -182,8 +182,8 @@ except Exception as e:
 print("\n  STEP 4: Selecting SLIM columns (optimization)...")
 
 try:
-    #  CRÍTICO: Selecionar APENAS as 7 colunas essenciais
-    # Esta é a principal diferença vs. pipeline antigo (que tinha ~36 colunas)
+    #  CRÍTICO: Selecionar APENAS as 7 columns essenciais
+    # Esta é a principal diferença vs. pipeline antigo (que tinha ~36 columns)
     df_slim = df_enriched.select(
         col("car_chassis"),                     # Quem (identificador do veículo)
         col("event_timestamp"),                 # Quando (timestamp do evento)
@@ -227,7 +227,7 @@ except Exception as e:
     raise
 
 # 
-# 7. FINALIZAÇÃO
+# 7. FINALIZATION
 # 
 
 print("\n" + "" * 80)

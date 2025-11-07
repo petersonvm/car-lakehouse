@@ -2,24 +2,24 @@
 AWS Glue ETL Job - Gold Layer: Car Current State
 =================================================
 
-Objetivo:
-- Ler dados consolidados da Camada Silver (histórico completo)
-- Aplicar lógica de "Estado Atual" (1 linha por car_chassis)
+Objective:
+- Ler data consolidata da Camada Silver (histórico completo)
+- Aplicar lógica de "Estado Atual" (1 row por car_chassis)
 - Escrever snapshot no Gold Bucket (sobrescrita total)
 
 Lógica de Negócio:
 - Chave de negócio: car_chassis
 - Regra de seleção: current_mileage_km DESC (o maior = mais recente)
-- Resultado: 1 registro único por veículo (estado atual)
+- Resultado: 1 record único por veículo (estado atual)
 
 Características:
 - Leitura: Tabela Silver completa (sem particionamento)
 - Transformação: Window Function (row_number)
 - Escrita: Overwrite completo (snapshot estático)
-- Saída: Parquet não-particionado (tabela pequena)
+- Saída: Parquet não-partitioned (table pequena)
 
-Autor: Sistema de Data Lakehouse - Camada Gold
-Data: 2025-10-30
+Author: Data Lakehouse System - Camada Gold
+Date: 2025-10-30
 """
 
 import sys
@@ -35,7 +35,7 @@ from pyspark.sql.functions import col, to_date, current_date, datediff, when, li
 from datetime import datetime
 
 # ============================================================================
-# 1. INICIALIZAÇÃO DO JOB
+# 1. JOB INITIALIZATION
 # ============================================================================
 
 print("\n" + "=" * 80)
@@ -52,7 +52,7 @@ args = getResolvedOptions(sys.argv, [
     'gold_path'
 ])
 
-print(f"\n Parâmetros do Job:")
+print(f"\n Job parameters:")
 print(f"   Job Name: {args['JOB_NAME']}")
 print(f"   Silver Database: {args['silver_database']}")
 print(f"   Silver Table: {args['silver_table']}")
@@ -74,13 +74,13 @@ print("\n Contextos Spark e Glue inicializados com sucesso")
 # ============================================================================
 
 print("\n" + "=" * 80)
-print(" ETAPA 1: Lendo dados consolidados da Camada Silver")
+print(" ETAPA 1: Lendo data consolidata da Camada Silver")
 print("=" * 80)
 
 print(f"\n   Database: {args['silver_database']}")
 print(f"   Table: {args['silver_table']}")
 
-# Ler tabela Silver completa do Glue Data Catalog
+# Ler table Silver completa do Glue Data Catalog
 silver_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
     database=args['silver_database'],
     table_name=args['silver_table'],
@@ -90,22 +90,22 @@ silver_dynamic_frame = glueContext.create_dynamic_frame.from_catalog(
 # Converter para DataFrame
 df_silver = silver_dynamic_frame.toDF()
 
-# Contar registros totais
+# Contar records totais
 total_records = df_silver.count()
-print(f"\n    Registros lidos da Silver: {total_records}")
+print(f"\n    Records read from Silver: {total_records}")
 
 if total_records == 0:
     print("\n     AVISO: Nenhum dado encontrado na Camada Silver!")
-    print("   Finalizando job sem gerar dados no Gold.")
+    print("   Finalizando job sem gerar data no Gold.")
     job.commit()
-    print("\n JOB CONCLUÍDO (sem dados para processar)")
+    print("\n JOB CONCLUÍDO (sem data para processar)")
     # Não usar sys.exit() - deixar completar naturalmente
 else:
     print("\n    Schema da Camada Silver:")
     df_silver.printSchema()
 
-    # Mostrar amostra dos dados Silver
-    print("\n    Amostra de dados Silver (primeiros 5 registros):")
+    # Mostrar amostra dos data Silver
+    print("\n    Amostra de data Silver (primeiros 5 records):")
     df_silver.select(
         "car_chassis",
         "current_mileage_km",
@@ -124,7 +124,7 @@ else:
     print("=" * 80)
 
     print("\n    Regra de Negócio:")
-    print("      - 1 registro por car_chassis (veículo)")
+    print("      - 1 record por car_chassis (veículo)")
     print("      - Critério: MAIOR current_mileage_km (mais recente)")
     print("      - Método: Window Function com row_number()")
 
@@ -135,7 +135,7 @@ else:
 
     print("\n    Aplicando Window Function...")
 
-    # Adicionar coluna row_number
+    # Adicionar column row_number
     df_with_row_number = df_silver.withColumn(
         "row_num",
         F.row_number().over(window_spec)
@@ -167,7 +167,7 @@ else:
     print("      1. insurance_status (String): VENCIDO | VENCENDO_EM_90_DIAS | ATIVO")
     print("      2. insurance_days_expired (Int): Dias desde vencimento (null se ativo)")
     print("\n    Lógica de Negócio:")
-    print("      - Fonte: insurance_valid_until (campo achatado do Silver)")
+    print("      - Fonte: insurance_valid_until (field achatado do Silver)")
     print("      - Referência: current_date() no momento da execução")
     print("      - VENCIDO: validUntil < current_date")
     print("      - VENCENDO_EM_90_DIAS: 0 <= days_remaining <= 90")
@@ -175,7 +175,7 @@ else:
 
     print("\n    Aplicando transformações de data...")
 
-    # Definir colunas de data
+    # Definir columns de data
     current_date_col = current_date()
     # Campo achatado do Silver: insurance_valid_until (formato: "2026-10-29")
     valid_until_date_col = to_date(col("insurance_valid_until"), "yyyy-MM-dd")
@@ -211,8 +211,8 @@ else:
     insurance_stats = df_enriched.groupBy("insurance_status").count().orderBy(F.col("count").desc())
     insurance_stats.show(10, truncate=False)
 
-    # Mostrar amostra com os novos campos
-    print("\n    Amostra de dados com KPIs de Seguro:")
+    # Mostrar amostra com os novos fields
+    print("\n    Amostra de data com KPIs de Seguro:")
     df_enriched.select(
         "car_chassis",
         "manufacturer",
@@ -239,7 +239,7 @@ else:
         F.current_date()
     )
 
-    print("    Metadados Gold adicionados:")
+    print("    Metadata Gold adicionados:")
     print("      - gold_processing_timestamp: timestamp da execução do job")
     print("      - gold_snapshot_date: data do snapshot")
 
@@ -251,8 +251,8 @@ else:
     print("\n    Veículos por Fabricante:")
     manufacturer_stats.show(10, truncate=False)
 
-    # Mostrar amostra dos dados Gold finais
-    print("\n    Amostra de dados Gold (estado atual - primeiros 5 veículos):")
+    # Mostrar amostra dos data Gold finais
+    print("\n    Amostra de data Gold (estado atual - primeiros 5 veículos):")
     df_gold.select(
         "car_chassis",
         "manufacturer",
@@ -263,11 +263,11 @@ else:
     ).orderBy(F.col("current_mileage_km").desc()).show(5, truncate=False)
 
     # ============================================================================
-    # 6. ESCRITA NO GOLD BUCKET (OVERWRITE COMPLETO)
+    # 6. GOLD WRITING BUCKET (OVERWRITE COMPLETO)
     # ============================================================================
 
     print("\n" + "=" * 80)
-    print(" ETAPA 5: Escrevendo dados no Gold Bucket")
+    print(" ETAPA 5: Escrevendo data no Gold Bucket")
     print("=" * 80)
 
     gold_output_path = f"s3://{args['gold_bucket']}/{args['gold_path']}"
@@ -277,13 +277,13 @@ else:
     print(f"      - Path: {args['gold_path']}")
     print(f"      - Full Path: {gold_output_path}")
     print(f"      - Modo: overwrite (snapshot completo)")
-    print(f"      - Formato: parquet")
+    print(f"      - Format: parquet")
     print(f"      - Compressão: snappy")
-    print(f"      - Particionamento: Nenhum (tabela pequena)")
+    print(f"      - Particionamento: Nenhum (table pequena)")
 
     print("\n    Iniciando escrita...")
 
-    # Escrever dados usando Spark DataFrame Writer
+    # Escrever data usando Spark DataFrame Writer
     # Modo overwrite: sobrescreve todo o diretório (snapshot estático)
     df_gold.write \
         .mode("overwrite") \
@@ -292,9 +292,9 @@ else:
         .save(gold_output_path)
 
     print(f"\n    Dados escritos com sucesso!")
-    print(f"    Total de registros no Gold: {current_state_count}")
+    print(f"    Total de records no Gold: {current_state_count}")
 
-    # Verificar arquivos escritos
+    # Verificar files escritos
     print("\n    Arquivos Parquet gerados:")
     try:
         files_df = spark.read.parquet(gold_output_path)
@@ -303,13 +303,13 @@ else:
         ).listStatus(
             spark._jvm.org.apache.hadoop.fs.Path(gold_output_path)
         ) if f.getPath().getName().endswith(".parquet")])
-        print(f"      - Número de arquivos: {num_files}")
-        print(f"      - Total de registros: {files_df.count()}")
+        print(f"      - Número de files: {num_files}")
+        print(f"      - Total de records: {files_df.count()}")
     except Exception as e:
-        print(f"        Não foi possível listar arquivos: {e}")
+        print(f"        Não foi possível listar files: {e}")
 
     # ============================================================================
-    # 7. FINALIZAÇÃO DO JOB
+    # 7. FINALIZATION DO JOB
     # ============================================================================
 
     print("\n" + "=" * 80)
@@ -319,7 +319,7 @@ else:
     print(f"\n Resumo Final:")
     print(f"   - Registros lidos (Silver): {total_records}")
     print(f"   - Veículos únicos (Gold): {current_state_count}")
-    print(f"   - Redução de dados: {(vehicles_deduped / total_records * 100):.1f}%")
+    print(f"   - Redução de data: {(vehicles_deduped / total_records * 100):.1f}%")
     print(f"   - KPIs adicionados: insurance_status, insurance_days_expired")
     print(f"   - Output Path: {gold_output_path}")
     print(f"   - Snapshot Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -332,9 +332,9 @@ else:
     print("\n" + "=" * 80)
     print(" Próximos Passos:")
     print("   1. Workflow irá acionar Gold Crawler automaticamente")
-    print("   2. Crawler atualizará tabela 'gold_car_current_state' no catálogo")
+    print("   2. Crawler atualizará table 'gold_car_current_state' no catálogo")
     print("   3. Dados estarão disponíveis para consulta no Athena")
-    print("   4. Novas colunas disponíveis:")
+    print("   4. Novas columns disponíveis:")
     print("      - insurance_status: Status do seguro do veículo")
     print("      - insurance_days_expired: Dias vencidos (se aplicável)")
     print("=" * 80)

@@ -79,7 +79,7 @@ job.init(args['JOB_NAME'], args)
 # Configuration
 GOLD_BUCKET = args['gold_bucket']
 GLUE_DATABASE = args['glue_database']
-SILVER_TABLE = "silver_car_telemetry"  # VIEW com mapeamento de colunas (car_chassis → carChassis)
+SILVER_TABLE = "silver_car_telemetry"  # VIEW com mapeamento de columns (car_chassis → carChassis)
 GOLD_TABLE = "gold_fuel_efficiency_monthly"
 OUTPUT_PATH = f"s3://{GOLD_BUCKET}/fuel_efficiency_monthly/"
 
