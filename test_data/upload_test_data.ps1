@@ -1,6 +1,6 @@
-# Script para upload de dados de teste para o Car Lakehouse Pipeline
-# Autor: Peterson VM
-# Data: 06 de Novembro de 2025
+# Script to upload test data to Car Lakehouse Pipeline
+# Author: Peterson VM
+# Date: November 6, 2025
 
 param(
     [Parameter(Mandatory=$false)]
@@ -14,24 +14,24 @@ param(
     [string]$SampleFile = "all"
 )
 
-# Cores para output
+# Colors for output
 $Green = "Green"
 $Yellow = "Yellow"
 $Red = "Red"
 $Cyan = "Cyan"
 $Gray = "Gray"
 
-# Configuração
+# Configuration
 $LandingBucket = "$ProjectName-landing-$Environment"
 $TestDataDir = "test_data"
 
 Write-Host "`n╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor $Green
-Write-Host "║          🚀 UPLOAD DE DADOS DE TESTE - CAR LAKEHOUSE                ║" -ForegroundColor $Green
+Write-Host "║          🚀 TEST DATA UPLOAD - CAR LAKEHOUSE                ║" -ForegroundColor $Green
 Write-Host "╚═══════════════════════════════════════════════════════════════════════╝`n" -ForegroundColor $Green
 
 Write-Host "📋 CONFIGURAÇÃO:" -ForegroundColor $Cyan
 Write-Host "   Landing Bucket: $LandingBucket" -ForegroundColor $Gray
-Write-Host "   Diretório: $TestDataDir" -ForegroundColor $Gray
+Write-Host "   Directory: $TestDataDir" -ForegroundColor $Gray
 Write-Host "   Arquivo(s): $SampleFile`n" -ForegroundColor $Gray
 
 # Verificar se diretório existe
@@ -90,7 +90,7 @@ Write-Host "   Falha: $FailCount arquivo(s)" -ForegroundColor $(if ($FailCount -
 
 if ($SuccessCount -gt 0) {
     Write-Host "`n✅ PRÓXIMOS PASSOS:" -ForegroundColor $Yellow
-    Write-Host "   1. Verificar logs da Lambda Ingestion:" -ForegroundColor $Gray
+    Write-Host "   1. Check Lambda Ingestion logs:" -ForegroundColor $Gray
     Write-Host "      aws logs tail /aws/lambda/$ProjectName-ingestion-$Environment --follow`n" -ForegroundColor $Cyan
     
     Write-Host "   2. Verificar arquivos no Bronze:" -ForegroundColor $Gray
@@ -99,7 +99,7 @@ if ($SuccessCount -gt 0) {
     Write-Host "   3. Executar Workflow completo:" -ForegroundColor $Gray
     Write-Host "      aws glue start-workflow-run --name $ProjectName-silver-gold-workflow-$Environment`n" -ForegroundColor $Cyan
     
-    Write-Host "   4. Consultar dados no Athena:" -ForegroundColor $Gray
+    Write-Host "   4. Query data in Athena:" -ForegroundColor $Gray
     Write-Host "      SELECT * FROM `"$ProjectName-catalog-$Environment`".`"silver_car_telemetry`" LIMIT 10;`n" -ForegroundColor $Cyan
 }
 

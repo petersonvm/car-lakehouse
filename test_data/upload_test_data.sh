@@ -1,14 +1,14 @@
 #!/bin/bash
-# Script para upload de dados de teste para o Car Lakehouse Pipeline
-# Autor: Peterson VM
-# Data: 06 de Novembro de 2025
+# Script to upload test data to Car Lakehouse Pipeline
+# Author: Peterson VM
+# Date: November 6, 2025
 
-# Configuração padrão
+# Configuration padrão
 ENVIRONMENT="${1:-dev}"
 PROJECT_NAME="${2:-datalake-pipeline}"
 SAMPLE_FILE="${3:-all}"
 
-# Cores para output
+# Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -16,17 +16,17 @@ CYAN='\033[0;36m'
 GRAY='\033[0;37m'
 NC='\033[0m' # No Color
 
-# Configuração
+# Configuration
 LANDING_BUCKET="${PROJECT_NAME}-landing-${ENVIRONMENT}"
 TEST_DATA_DIR="test_data"
 
 echo -e "\n${GREEN}╔═══════════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║          🚀 UPLOAD DE DADOS DE TESTE - CAR LAKEHOUSE                ║${NC}"
+echo -e "${GREEN}║          🚀 TEST DATA UPLOAD - CAR LAKEHOUSE                ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════════════════════╝${NC}\n"
 
 echo -e "${CYAN}📋 CONFIGURAÇÃO:${NC}"
 echo -e "${GRAY}   Landing Bucket: ${LANDING_BUCKET}${NC}"
-echo -e "${GRAY}   Diretório: ${TEST_DATA_DIR}${NC}"
+echo -e "${GRAY}   Directory: ${TEST_DATA_DIR}${NC}"
 echo -e "${GRAY}   Arquivo(s): ${SAMPLE_FILE}${NC}\n"
 
 # Verificar se diretório existe
@@ -83,7 +83,7 @@ fi
 
 if [ $SUCCESS_COUNT -gt 0 ]; then
     echo -e "\n${YELLOW}✅ PRÓXIMOS PASSOS:${NC}"
-    echo -e "${GRAY}   1. Verificar logs da Lambda Ingestion:${NC}"
+    echo -e "${GRAY}   1. Check Lambda Ingestion logs:${NC}"
     echo -e "${CYAN}      aws logs tail /aws/lambda/${PROJECT_NAME}-ingestion-${ENVIRONMENT} --follow${NC}\n"
     
     echo -e "${GRAY}   2. Verificar arquivos no Bronze:${NC}"
@@ -92,7 +92,7 @@ if [ $SUCCESS_COUNT -gt 0 ]; then
     echo -e "${GRAY}   3. Executar Workflow completo:${NC}"
     echo -e "${CYAN}      aws glue start-workflow-run --name ${PROJECT_NAME}-silver-gold-workflow-${ENVIRONMENT}${NC}\n"
     
-    echo -e "${GRAY}   4. Consultar dados no Athena:${NC}"
+    echo -e "${GRAY}   4. Query data in Athena:${NC}"
     echo -e "${CYAN}      SELECT * FROM \\\"${PROJECT_NAME}-catalog-${ENVIRONMENT}\\\".\\\"silver_car_telemetry\\\" LIMIT 10;${NC}\n"
 fi
 

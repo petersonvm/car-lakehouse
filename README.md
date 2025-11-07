@@ -1,41 +1,41 @@
-# 🚗 Car Lakehouse - Data Pipeline
+﻿# 🚗 Car Lakehouse - Data Pipeline
 
-**Pipeline de dados de telemetria veicular** implementado na AWS usando arquitetura Medallion (Landing → Bronze → Silver → Gold) com orquestração via AWS Glue Workflow.
+**Vehicle telemetry data pipeline** implemented on AWS using Medallion architecture (Landing → Bronze → Silver → Gold) with orchestration via AWS Glue Workflow.
 
-**Status**: ✅ **PRODUÇÃO** - Pipeline 100% funcional e validado  
-**Ambiente**: Development (dev)  
-**Última Atualização**: 06 de Novembro de 2025
+**Status**: ✅ **PRODUCTION** - 100% functional and validated pipeline  
+**Environment**: Development (dev)  
+**Last Update**: November 6, 2025
 
 ---
 
-## 📋 Visão Geral
+## 📋 Overview
 
-### Arquitetura Medallion
+### Medallion Architecture
 
-Este projeto implementa um Data Lakehouse completo para processamento de telemetria veicular, seguindo a arquitetura Medallion:
+This project implements a complete Data Lakehouse for vehicle telemetry processing, following the Medallion architecture:
 
-- **🛬 Landing Zone**: Recebe dados brutos (JSON/CSV) de APIs, dispositivos IoT ou upload manual
-- **🥉 Bronze Layer**: Armazena dados copiados do Landing em formato original (validação mínima)
-- **🥈 Silver Layer**: Dados limpos, padronizados (snake_case), deduplicated e particionados (Parquet)
-- **🥇 Gold Layer**: Agregações de negócio prontas para consumo (dashboards, BI, APIs)
+- **🛬 Landing Zone**: Receives raw data (JSON/CSV) from APIs, IoT devices, or manual upload
+- **🥉 Bronze Layer**: Stores data copied from Landing in original format (minimal validation)
+- **🥈 Silver Layer**: Clean, standardized data (snake_case), deduplicated and partitioned (Parquet)
+- **🥇 Gold Layer**: Business aggregations ready for consumption (dashboards, BI, APIs)
 
-### Componentes Principais
+### Main Components
 
-| Componente | Quantidade | Descrição |
-|------------|------------|-----------|
-| **Buckets S3** | 8 | Landing, Bronze, Silver, Gold, Scripts, Temp, Athena, Layers |
-| **Lambda Functions** | 1 ativa | Ingestion (Landing → Bronze) com S3 trigger automático |
-| **Glue Jobs** | 4 ativos | 1 Silver + 3 Gold (car state, fuel efficiency, alerts) |
-| **Glue Crawlers** | 6 ativos | Bronze, Silver, 3 Gold + schema discovery |
-| **Glue Workflow** | 1 | Orquestração Silver→Gold (scheduled daily 02:00 UTC) |
-| **Tabelas Catalog** | 5 | 1 Bronze + 1 Silver + 3 Gold |
+| Component | Quantity | Description |
+|-----------|----------|-------------|
+| **S3 Buckets** | 8 | Landing, Bronze, Silver, Gold, Scripts, Temp, Athena, Layers |
+| **Lambda Functions** | 1 active | Ingestion (Landing → Bronze) with automatic S3 trigger |
+| **Glue Jobs** | 4 active | 1 Silver + 3 Gold (car state, fuel efficiency, alerts) |
+| **Glue Crawlers** | 6 active | Bronze, Silver, 3 Gold + schema discovery |
+| **Glue Workflow** | 1 | Silver→Gold orchestration (scheduled daily 02:00 UTC) |
+| **Catalog Tables** | 5 | 1 Bronze + 1 Silver + 3 Gold |
 | **IAM Roles** | 4 | Lambda, Glue Jobs Silver, Gold, Crawlers |
 
 ---
 
-## 🏗️ Arquitetura Completa
+## 🏗️ Complete Architecture
 
-### Fluxo de Dados End-to-End
+### End-to-End Data Flow
 
 ```mermaid
 graph TB
@@ -58,7 +58,7 @@ graph TB
     H --> O[Athena/BI Tools]
 ```
 
-### Camadas de Dados
+### Data Layers
 
 #### 📂 Landing Zone
 ```
@@ -66,8 +66,8 @@ s3://datalake-pipeline-landing-dev/
 ├── *.json (raw telemetry data)
 └── *.csv (batch uploads)
 
-Status: TRANSIENT (arquivos removidos após ingestão)
-Trigger: Lambda Ingestion (automático via S3 Event)
+Status: TRANSIENT (files removed after ingestion)
+Trigger: Lambda Ingestion (automatic via S3 Event)
 ```
 
 #### 📂 Bronze Layer
@@ -77,9 +77,9 @@ s3://datalake-pipeline-bronze-dev/
     └── car_data/
         └── *.json (raw, 1:1 copy from Landing)
 
-Tabela: car_bronze
-Formato: JSON (original)
-Tamanho: ~29 KB
+Table: car_bronze
+Format: JSON (original)
+Size: ~29 KB
 ```
 
 #### 📂 Silver Layer
@@ -91,10 +91,10 @@ s3://datalake-pipeline-silver-dev/
             └── event_day=05/
                 └── *.parquet (snappy compressed)
 
-Tabela: silver_car_telemetry
-Formato: Parquet (56 colunas snake_case)
-Particionamento: event_year, event_month, event_day
-Tamanho: ~13 KB
+Table: silver_car_telemetry
+Format: Parquet (56 columns snake_case)
+Partitioning: event_year, event_month, event_day
+Size: ~13 KB
 ```
 
 #### 📂 Gold Layer
@@ -107,42 +107,42 @@ s3://datalake-pipeline-gold-dev/
 └── gold_performance_alerts_slim/
     └── *.parquet (alert logs)
 
-Tabelas: gold_car_current_state_new, fuel_efficiency_monthly, performance_alerts_log_slim
-Formato: Parquet
-Tamanho Total: ~19 KB
+Tables: gold_car_current_state_new, fuel_efficiency_monthly, performance_alerts_log_slim
+Format: Parquet
+Total Size: ~19 KB
 ```
 
 ---
 
-## 📦 Inventário de Componentes
+## 📦 Component Inventory
 
 ### 1. 🗄️ Glue Data Catalog
 
 #### Database
-| Nome | Catalog ID | Descrição |
-|------|------------|-----------|
-| `datalake-pipeline-catalog-dev` | 901207488135 | Database principal do Lakehouse |
+| Name | Catalog ID | Description |
+|------|------------|-------------|
+| `datalake-pipeline-catalog-dev` | 901207488135 | Main Lakehouse database |
 
-#### Tabelas (5 tabelas ativas)
+#### Tables (5 active tables)
 
 ##### Bronze
-- **`bronze_car_data`**: Dados brutos (JSON) copiados do Landing
-  - Localização: `s3://datalake-pipeline-bronze-dev/bronze/car_data/`
-  - Atualizada por: `datalake-pipeline-bronze-car-data-crawler-dev`
+- **`bronze_car_data`**: Raw data (JSON) copied from Landing
+  - Location: `s3://datalake-pipeline-bronze-dev/bronze/car_data/`
+  - Updated by: `datalake-pipeline-bronze-car-data-crawler-dev`
 
 ##### Silver
-- **`silver_car_telemetry`**: Dados limpos e estruturados (56 colunas)
-  - Localização: `s3://datalake-pipeline-silver-dev/car_telemetry/`
-  - Formato: Parquet particionado (event_year/month/day)
-  - Atualizada por: `datalake-pipeline-silver-crawler-dev`
+- **`silver_car_telemetry`**: Clean and structured data (56 columns)
+  - Location: `s3://datalake-pipeline-silver-dev/car_telemetry/`
+  - Format: Partitioned Parquet (event_year/month/day)
+  - Updated by: `datalake-pipeline-silver-crawler-dev`
 
 ##### Gold
-- **`gold_car_current_state_new`**: Estado atual de cada veículo (12 colunas)
-  - Join de telemetria + dados estáticos + status de seguro
-- **`fuel_efficiency_monthly`**: Métricas de eficiência de combustível (7 colunas)
-  - Agregação mensal por veículo (km/litro, distância, consumo)
-- **`performance_alerts_log_slim`**: Log de alertas de performance
-  - Anomalias baseadas em thresholds (temperatura, pressão, bateria)
+- **`gold_car_current_state_new`**: Current state of each vehicle (12 columns)
+  - Join of telemetry + static data + insurance status
+- **`fuel_efficiency_monthly`**: Fuel efficiency metrics (7 columns)
+  - Monthly aggregation by vehicle (km/liter, distance, consumption)
+- **`performance_alerts_log_slim`**: Performance alert log
+  - Anomalies based on thresholds (temperature, pressure, battery)
 
 ### 2. 🚀 Glue Jobs
 
@@ -163,7 +163,7 @@ Tamanho Total: ~19 KB
 #### Jobs Gold (3 paralelos)
 
 **1. `datalake-pipeline-gold-car-current-state-dev`**
-- **Função**: Último estado de cada veículo
+- **Função**: Latest state of each vehicle
 - **Transformações**:
   - Window: last_value over partition by car_chassis
   - Join telemetry + static info
@@ -171,7 +171,7 @@ Tamanho Total: ~19 KB
 - **Duração média**: 91s
 
 **2. `datalake-pipeline-gold-fuel-efficiency-dev`**
-- **Função**: Eficiência de combustível mensal
+- **Função**: Monthly fuel efficiency
 - **Transformações**:
   - Extrair year/month de event_date
   - GroupBy car_chassis + year + month
@@ -180,7 +180,7 @@ Tamanho Total: ~19 KB
 - **Duração média**: 93s
 
 **3. `datalake-pipeline-gold-performance-alerts-slim-dev`**
-- **Função**: Alertas de performance
+- **Função**: Performance alerts
 - **Transformações**:
   - Check thresholds (temp, pressão, bateria)
   - Flag anomalias
@@ -189,7 +189,7 @@ Tamanho Total: ~19 KB
 
 ### 3. 🔍 Glue Crawlers (6 ativos)
 
-| Crawler | Camada | S3 Path | Tabela Criada |
+| Crawler | Layer | S3 Path | Created Table |
 |---------|--------|---------|---------------|
 | `datalake-pipeline-bronze-car-data-crawler-dev` | Bronze | `bronze/car_data/` | `bronze_car_data` |
 | `datalake-pipeline-silver-crawler-dev` | Silver | `car_telemetry/` | `silver_car_telemetry` |
@@ -200,14 +200,14 @@ Tamanho Total: ~19 KB
 
 ### 4. 🪣 Buckets S3 (8 buckets)
 
-| Bucket | Camada | Propósito | Tamanho |
+| Bucket | Layer | Purpose | Tamanho |
 |--------|--------|-----------|---------|
-| `datalake-pipeline-landing-dev` | Landing | Recebe uploads (JSON/CSV) | 0 bytes (transient) |
+| `datalake-pipeline-landing-dev` | Landing | Receives uploads (JSON/CSV) | 0 bytes (transient) |
 | `datalake-pipeline-bronze-dev` | Bronze | Raw data (1:1 copy) | ~29 KB |
 | `datalake-pipeline-silver-dev` | Silver | Cleaned & partitioned | ~13 KB |
 | `datalake-pipeline-gold-dev` | Gold | Business aggregations | ~19 KB |
 | `datalake-pipeline-glue-scripts-dev` | Operacional | Job scripts (Python) | ~100 KB |
-| `datalake-pipeline-glue-temp-dev` | Operacional | Temp files | Temporário |
+| `datalake-pipeline-glue-temp-dev` | Operacional | Temp files | Temporary |
 | `datalake-pipeline-athena-results-dev` | Analytics | Query results | ~50 KB |
 | `datalake-pipeline-lambda-layers-dev` | Operacional | Lambda layers | ~20 MB |
 
@@ -222,7 +222,7 @@ Tamanho Total: ~19 KB
 **Triggers (6 total):**
 1. **Scheduled Start** → Silver Job
 2. **Silver Job SUCCEEDED** → Silver Crawler
-3. **Silver Crawler SUCCEEDED** → Fan-Out (3 Gold Jobs em paralelo)
+3. **Silver Crawler SUCCEEDED** → Fan-Out (3 Gold Jobs in parallel)
 4. **Gold Job 1 SUCCEEDED** → Gold Crawler 1
 5. **Gold Job 2 SUCCEEDED** → Gold Crawler 2
 6. **Gold Job 3 SUCCEEDED** → Gold Crawler 3
@@ -235,13 +235,13 @@ Tamanho Total: ~19 KB
   - Eventos: `s3:ObjectCreated:*` (*.json, *.csv)
 - **Função**: Copiar Landing → Bronze + cleanup Landing
 - **Role**: `datalake-pipeline-lambda-execution-role-dev`
-- **Status**: ✅ ATIVA (últimas execuções: 5 invocações)
+- **Status**: ✅ ATIVA (últimas execuções: 5 invocations)
 
 > **Nota**: Pipeline completamente migrado para AWS Glue. Processamento Bronze→Silver→Gold é feito por Glue Jobs.
 
 ### 7. 🔐 IAM Roles (4 roles)
 
-| Role | Usado Por | Principais Permissões |
+| Role | Used By | Main Permissions |
 |------|-----------|------------------------|
 | `datalake-pipeline-lambda-execution-role-dev` | Lambda Ingestion | S3 (Landing read, Bronze write), CloudWatch Logs |
 | `datalake-pipeline-glue-job-role-dev` | Job Silver | S3 (Bronze read, Silver write), Glue Catalog, CloudWatch |
@@ -250,9 +250,9 @@ Tamanho Total: ~19 KB
 
 ---
 
-## 🔗 Matriz de Comunicação
+## 🔗 Communication Matrix
 
-| Origem | Ação | Destino | Dados Transferidos |
+| Origem | Ação | Destino | Data Transferred |
 |--------|------|---------|-------------------|
 | APIs/IoT/Manual | S3 PUT | Landing Bucket | JSON/CSV raw files |
 | Landing Bucket | S3 Event | Lambda Ingestion | ObjectCreated trigger |
@@ -273,9 +273,9 @@ Tamanho Total: ~19 KB
 
 ---
 
-## 📊 Fluxo de Dados Detalhado
+## 📊 Detailed Data Flow
 
-### Stage 1: Ingestão (Landing → Bronze)
+### Stage 1: Ingestion (Landing → Bronze)
 
 ```
 ┌────────────────────────┐
@@ -308,7 +308,7 @@ Tamanho Total: ~19 KB
 └────────────────────────┘
 ```
 
-### Stage 2: Consolidação (Bronze → Silver)
+### Stage 2: Consolidation (Bronze → Silver)
 
 ```
 ┌────────────────────────┐
@@ -347,7 +347,7 @@ Tamanho Total: ~19 KB
 └────────────────────────────────┘
 ```
 
-### Stage 3: Agregações (Silver → Gold)
+### Stage 3: Aggregations (Silver → Gold)
 
 ```
 ┌────────────────────────────────┐
@@ -393,13 +393,13 @@ Tamanho Total: ~19 KB
 
 ---
 
-## 📁 Estrutura do Projeto
+## 📁 Project Structure
 
 ```
 .
-├── terraform/                           # Infraestrutura como Código
+├── terraform/                           # Infrastructure as Code
 │   ├── provider.tf                      # Configuração AWS Provider
-│   ├── variables.tf                     # Definição de variáveis
+│   ├── variables.tf                     # Variable definitions
 │   ├── s3.tf                            # Buckets S3 (8 buckets)
 │   ├── lambda.tf                        # Lambda Ingestion + Layer
 │   ├── iam.tf                           # Roles e Policies IAM (4 roles)
@@ -415,12 +415,12 @@ Tamanho Total: ~19 KB
 │   ├── gold_car_current_state_job.py    # Silver → Gold 1 (12 cols)
 │   ├── gold_fuel_efficiency_job.py      # Silver → Gold 2 (7 cols)
 │   └── gold_performance_alerts_slim_job.py  # Silver → Gold 3 (alerts)
-├── lambdas/                             # Código das Lambdas
+├── lambdas/                             # Lambda code
 │   └── ingestion/
 │       ├── lambda_function.py           # Lambda Ingestion (ativa)
 │       └── README.md                    # Documentação técnica
-├── docs/                                # Documentação do Projeto
-│   └── reports/                         # Relatórios organizados
+├── docs/                                # Project documentation
+│   └── reports/                         # Organized reports
 │       ├── END_TO_END_TEST_REPORT.md
 │       ├── EXECUTIVE_SUMMARY.md
 │       ├── GOLD_LAYER_VALIDATION_REPORT.md
@@ -431,49 +431,49 @@ Tamanho Total: ~19 KB
 │       ├── REFACTORING_SUMMARY.md
 │       ├── Relatorio_Componentes_Lakehouse.md
 │       └── WORKFLOW_RECOVERY_GUIDE.md
-├── scripts/                             # Scripts auxiliares
-├── test_data/                           # Dados de teste
-├── Data_Model/                          # Modelos de dados
+├── scripts/                             # Utility scripts
+├── test_data/                           # Test data
+├── Data_Model/                          # Data models
 │   └── car_raw.json                     # Schema exemplo
-├── assets/                              # Arquivos auxiliares
+├── assets/                              # Auxiliary files
 ├── build_lambda.ps1                     # Build Lambda (Windows)
 ├── build_lambda.sh                      # Build Lambda (Linux/Mac)
 ├── build_layer_docker.ps1               # Build Layer com Docker
 ├── terraform.tfvars                     # Variáveis Terraform (privado)
 ├── .gitignore                           # Git ignore rules
-├── QUICK_REFERENCE.md                   # Referência rápida
-└── README.md                            # Este arquivo
+├── QUICK_REFERENCE.md                   # Quick reference
+└── README.md                            # This file
 ```
 
 ---
 
-## 🚀 Como Usar
+## 🚀 How to Use
 
-### Pré-requisitos
+### Prerequisites
 
 1. **Terraform** >= 1.0
    ```bash
    terraform version
    ```
 
-2. **AWS CLI** configurado
+2. **AWS CLI** configured
    ```bash
    aws configure
    ```
 
-3. **Credenciais AWS** com permissões para criar:
+3. **AWS Credentials** with permissions to create:
    - S3 Buckets, Lambda Functions, Glue (Jobs, Crawlers, Workflow)
    - IAM Roles e Policies, CloudWatch Log Groups
 
-### Instalação e Deploy
+### Installation and Deployment
 
-#### 1. Clonar o repositório
+#### 1. Clone the repository
 ```bash
 git clone https://github.com/petersonvm/car-lakehouse.git
 cd car-lakehouse
 ```
 
-#### 2. Build da Lambda Ingestion (OBRIGATÓRIO antes do Terraform)
+#### 2. Build da Lambda Ingestion (REQUIRED before Terraform)
 
 **Windows (PowerShell):**
 ```powershell
@@ -486,18 +486,18 @@ chmod +x build_lambda.sh
 ./build_lambda.sh
 ```
 
-Isso criará:
-- `assets/ingestion_package.zip` (código da Lambda)
+This will create:
+- `assets/ingestion_package.zip` (Lambda code)
 - `assets/pandas_pyarrow_layer.zip` (Lambda Layer)
 
-#### 3. Configurar variáveis
+#### 3. Configure variables
 
-Navegue até o diretório Terraform:
+Navigate to Terraform directory:
 ```bash
 cd terraform
 ```
 
-Copie o arquivo de exemplo (se existir) ou edite diretamente `terraform.tfvars`:
+Copy the example file (if exists) or edit directly `terraform.tfvars`:
 ```hcl
 aws_region   = "us-east-1"
 project_name = "datalake-pipeline"
@@ -510,93 +510,93 @@ common_tags = {
 }
 ```
 
-#### 4. Inicializar e aplicar Terraform
+#### 4. Initialize and apply Terraform
 
 ```bash
-# Inicializar backend e providers
+# Initialize backend and providers
 terraform init
 
-# Validar configuração
+# Validate configuration
 terraform validate
 
-# Ver plano de execução
+# View execution plan
 terraform plan
 
 # Aplicar (criar recursos)
 terraform apply
 ```
 
-Digite `yes` quando solicitado.
+Type `yes` when prompted.
 
-#### 5. Verificar outputs
+#### 5. Verify outputs
 
 ```bash
 terraform output
 ```
 
-Você verá informações sobre:
-- Buckets S3 criados (8)
+You will see information about:
+- Created S3 Buckets (8)
 - Lambda Ingestion ARN
-- Glue Database e tabelas
+- Glue Database and tables
 - Workflow ARN
 
 ---
 
-## 🧪 Testar o Pipeline
+## 🧪 Test the Pipeline
 
-### 1. Upload de arquivo JSON para o Landing Zone
+### 1. Upload JSON file to Landing Zone
 
 ```bash
-# Fazer upload de dados de teste
+# Upload test data
 aws s3 cp test_data/sample_car_data.json s3://datalake-pipeline-landing-dev/
 
-# Verificar logs da Lambda Ingestion
+# Check Lambda Ingestion logs
 aws logs tail /aws/lambda/datalake-pipeline-ingestion-dev --follow
 ```
 
-A Lambda será invocada automaticamente e copiará o arquivo para Bronze.
+The Lambda will be invoked automatically and copy the file to Bronze.
 
-### 2. Verificar arquivo no Bronze
+### 2. Verify file in Bronze
 
 ```bash
 aws s3 ls s3://datalake-pipeline-bronze-dev/bronze/car_data/ --recursive
 ```
 
-### 3. Executar manualmente o Job Silver (opcional - ou esperar pelo scheduled trigger)
+### 3. Manually run Silver Job (optional - or wait for scheduled trigger)
 
 ```bash
 aws glue start-job-run --job-name datalake-pipeline-silver-consolidation-dev
 ```
 
-### 4. Executar o Workflow completo
+### 4. Run complete Workflow
 
 ```bash
-# Executar workflow manualmente
+# Run workflow manually
 aws glue start-workflow-run --name datalake-pipeline-silver-gold-workflow-dev
 
-# Verificar status
+# Check status
 aws glue get-workflow-run --name datalake-pipeline-silver-gold-workflow-dev --run-id <RUN_ID>
 ```
 
-O workflow executará:
+The workflow will execute:
 1. Job Silver (78s)
-2. Crawler Silver (atualizar partições)
-3. 3 Jobs Gold em paralelo (91s, 93s, 106s)
-4. 3 Crawlers Gold (atualizar tabelas)
+2. Crawler Silver (update partitions)
+3. 3 Jobs Gold in parallel (91s, 93s, 106s)
+4. 3 Crawlers Gold (update tables)
 
-**Duração total**: ~12 minutos
+**Total duration**: ~12 minutos
 
-### 5. Consultar dados com Athena
+### 5. Query data with Athena
 
 ```sql
--- Verificar tabela Silver
+-- Check Silver table
 SELECT * FROM "datalake-pipeline-catalog-dev"."silver_car_telemetry"
 LIMIT 10;
 
--- Verificar estado atual dos veículos
+-- Check current vehicle state
 SELECT * FROM "datalake-pipeline-catalog-dev"."gold_car_current_state_new";
 
--- Verificar eficiência de combustível
+-- Check fuel efficiency
 SELECT 
     car_chassis,
     year,
@@ -606,7 +606,7 @@ SELECT
 FROM "datalake-pipeline-catalog-dev"."fuel_efficiency_monthly"
 ORDER BY year DESC, month DESC;
 
--- Verificar alertas de performance
+-- Check performance alerts
 SELECT * FROM "datalake-pipeline-catalog-dev"."performance_alerts_log_slim"
 WHERE alert_type = 'HIGH_TEMPERATURE'
 LIMIT 100;
@@ -614,30 +614,30 @@ LIMIT 100;
 
 ---
 
-## 📊 Schema dos Dados
+## 📊 Data Schema
 
 ### Silver Layer: `silver_car_telemetry` (56 colunas)
 
 ```python
-# Identificação do Veículo
+# Vehicle Identification
 car_chassis: string
 manufacturer: string
 model: string
 manufacturing_year: bigint
 purchase_date: string
 
-# Dados do Proprietário
+# Owner Data
 owner_name: string
 owner_cpf: string
 owner_email: string
 owner_phone: string
 
-# Seguro
+# Insurance
 insurance_company: string
 insurance_policy_number: string
 insurance_valid_until: string
 
-# Telemetria Geral
+# General Telemetry
 telemetry_timestamp: timestamp
 current_mileage_km: bigint
 location_latitude: double
@@ -651,35 +651,35 @@ trip_duration_minutes: bigint
 trip_average_speed_km_h: double
 trip_fuel_consumed_liters: double
 
-# Motor (Engine)
+# Engine (Engine)
 engine_temperature_c: bigint
 engine_rpm: bigint
 engine_load_percent: bigint
 engine_coolant_temp_c: bigint
 
-# Bateria
+# Battery
 battery_voltage_v: double
 battery_charge_percent: bigint
 
-# Pneus (Tires)
+# Tires (Tires)
 tire_pressure_front_left_psi: bigint
 tire_pressure_front_right_psi: bigint
 tire_pressure_rear_left_psi: bigint
 tire_pressure_rear_right_psi: bigint
 
-# Sensores
+# Sensors
 odometer_reading_km: bigint
 fuel_level_percent: bigint
 ambient_temperature_c: bigint
 
-# Eventos e Alertas
+# Events and Alerts
 event_id: string (PK)
 event_date: string
 event_year: bigint (partition)
 event_month: bigint (partition)
 event_day: bigint (partition)
 
-# Metadados
+# Metadata
 processing_timestamp: timestamp
 ```
 
@@ -714,18 +714,18 @@ avg_fuel_efficiency_km_per_liter: double
 
 ---
 
-## 🔐 Segurança
+## 🔐 Security
 
-- **✅ Criptografia**: Todos os buckets S3 usam AES256
-- **✅ Acesso Público**: Bloqueado por padrão em todos os buckets
-- **✅ Versionamento**: Habilitado nos buckets principais
-- **✅ IAM**: Princípio do menor privilégio (least privilege)
-- **✅ CloudWatch Logs**: Habilitado para todas as execuções
-- **✅ Job Bookmarks**: Habilitado no Job Silver (evita reprocessamento)
+- **✅ Encryption**: All S3 buckets use AES256
+- **✅ Public Access**: Blocked by default on all buckets
+- **✅ Versioning**: Enabled on main buckets
+- **✅ IAM**: Least privilege principle (least privilege)
+- **✅ CloudWatch Logs**: Enabled for all executions
+- **✅ Job Bookmarks**: Enabled on Silver Job (avoids reprocessing)
 
 ---
 
-## 📈 Monitoramento e Observabilidade
+## 📈 Monitoring and Observability
 
 ### CloudWatch Log Groups
 
@@ -743,16 +743,16 @@ avg_fuel_efficiency_km_per_liter: double
 /aws/glue/crawlers
 ```
 
-### Métricas Principais
+### Main Metrics
 
 | Métrica | Namespace | Descrição |
 |---------|-----------|-----------|
-| `Duration` | Lambda | Tempo de execução da Lambda Ingestion |
-| `Errors` | Lambda | Erros na Lambda Ingestion |
-| `glue.driver.aggregate.numCompletedStages` | Glue | Estágios completados nos Jobs |
-| `glue.driver.aggregate.numFailedTasks` | Glue | Tarefas falhadas nos Jobs |
+| `Duration` | Lambda | Lambda Ingestion execution time |
+| `Errors` | Lambda | Lambda Ingestion errors |
+| `glue.driver.aggregate.numCompletedStages` | Glue | Completed stages in Jobs |
+| `glue.driver.aggregate.numFailedTasks` | Glue | Failed tasks in Jobs |
 
-### Consultar Execuções Recentes
+### Query Recent Executions
 
 ```bash
 # Workflow runs
@@ -767,9 +767,9 @@ aws glue get-crawler-metrics --crawler-name-list datalake-pipeline-silver-crawle
 
 ---
 
-## 💰 Estimativa de Custos (Desenvolvimento)
+## 💰 Cost Estimate (Development)
 
-| Serviço | Uso Mensal | Custo Estimado |
+| Service | Monthly Usage | Estimated Cost |
 |---------|------------|----------------|
 | **S3 Storage** | ~200 KB | < $0.01 |
 | **Lambda Invocations** | ~100 invocations | < $0.01 |
@@ -777,141 +777,141 @@ aws glue get-crawler-metrics --crawler-name-list datalake-pipeline-silver-crawle
 | **Glue Crawlers** | 30 runs × 6 crawlers | ~$0.50 |
 | **Athena Queries** | ~1 TB scanned | ~$5.00 |
 | **CloudWatch Logs** | 1 GB | ~$0.50 |
-| **Total Estimado** | | **~$7.21/mês** |
+| **Estimated Total** | | **~$7.21/mês** |
 
-> **Nota**: Custos reais variam conforme o volume de dados e frequência de execução.
+> **Nota**: Actual costs vary according to data volume and execution frequency.
 
 ---
 
-## 🧹 Otimização de Infraestrutura
+## 🧹 Infrastructure Optimization
 
-### Limpeza de Recursos Legados
+### Legacy Resources Cleanup
 
-O pipeline atual contém ~10 recursos legados (órfãos de refatorações anteriores) que podem ser removidos para otimização de custos:
+The current pipeline contains ~10 legacy resources (orphans from previous refactoring) that can be removed for cost optimization:
 
-**Recursos Identificados:**
-- 3 Lambdas não utilizadas (cleansing, analysis, compliance)
-- 2 Crawlers duplicados (gold_alerts_slim, gold_fuel_efficiency)
-- 1 IAM Role órfã + 3 policies associadas
+**Identified Resources:**
+- 3 unused Lambdas (cleansing, analysis, compliance)
+- 2 duplicated Crawlers (gold_alerts_slim, gold_fuel_efficiency)
+- 1 orphan IAM Role + 3 associated policies
 
-**Economia Estimada:** ~$0.50/mês + redução de 7% na complexidade do Terraform
+**Estimated Savings:** ~$0.50/mês + reduction in 7% in Terraform complexity
 
-**Como Executar a Limpeza:**
+**How to Execute Cleanup:**
 
 ```bash
-# 1. Revisar plano detalhado
+# 1. Review detailed plan
 cat docs/TERRAFORM_CLEANUP_PLAN.md
 
-# 2. Simular limpeza (DRY RUN - não faz alterações)
+# 2. Simulate cleanup (DRY RUN - no changes)
 .\scripts\cleanup_legacy_resources.ps1 -DryRun
 
-# 3. Executar limpeza REAL (com backup automático)
+# 3. Execute REAL cleanup (with automatic backup)
 .\scripts\cleanup_legacy_resources.ps1
 
-# 4. Validar pipeline após limpeza
+# 4. Validate pipeline after cleanup
 aws glue start-workflow-run --name datalake-pipeline-silver-gold-workflow-dev
 ```
 
-**Documentação Completa:**
-- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: Plano detalhado de limpeza
-- **[scripts/cleanup_legacy_resources.ps1](./scripts/cleanup_legacy_resources.ps1)**: Script automatizado
+**Complete Documentation:**
+- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: Detailed cleanup plan
+- **[scripts/cleanup_legacy_resources.ps1](./scripts/cleanup_legacy_resources.ps1)**: Automated script
 
-> **✅ Seguro**: Script inclui backup automático do Terraform state e modo DRY RUN para simulação.
+> **✅ Insurance**: Script includes automatic Terraform state backup and DRY RUN mode for simulation.
 
 ---
 
-## 🗑️ Destruir Recursos (Remover Tudo)
+## 🗑️ Destroy Resources (Remove Everything)
 
-Para remover **TODOS** os recursos criados:
+To remove **ALL** created resources:
 
 ```bash
 cd terraform
 terraform destroy
 ```
 
-⚠️ **ATENÇÃO**: 
-- Faça backup dos dados S3 antes de destruir!
-- Buckets com versionamento requerem remoção manual de todas as versões
+⚠️ **WARNING**: 
+- Backup S3 data before destroying!
+- Buckets with versioning require manual removal of all versions
 
 ---
 
-## 📚 Documentação Adicional
+## 📚 Additional Documentation
 
-Para informações mais detalhadas, consulte:
+For more detailed information, see:
 
-- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)**: Comandos rápidos e referências
-- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: 🧹 Plano de limpeza de recursos legados
-- **[docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md](./docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md)**: Inventário completo detalhado
-- **[docs/reports/END_TO_END_TEST_REPORT.md](./docs/reports/END_TO_END_TEST_REPORT.md)**: Relatório de testes end-to-end
-- **[docs/reports/WORKFLOW_RECOVERY_GUIDE.md](./docs/reports/WORKFLOW_RECOVERY_GUIDE.md)**: Guia de recuperação do workflow
-- **[test_data/README.md](./test_data/README.md)**: 🧪 Guia de dados de teste
+- **[QUICK_REFERENCE.md](./QUICK_REFERENCE.md)**: Quick commands and references
+- **[docs/TERRAFORM_CLEANUP_PLAN.md](./docs/TERRAFORM_CLEANUP_PLAN.md)**: 🧹 Plano de limpeza de legacy resources
+- **[docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md](./docs/reports/INVENTARIO_COMPONENTES_ATUALIZADO.md)**: Detailed complete inventory
+- **[docs/reports/END_TO_END_TEST_REPORT.md](./docs/reports/END_TO_END_TEST_REPORT.md)**: End-to-end test report
+- **[docs/reports/WORKFLOW_RECOVERY_GUIDE.md](./docs/reports/WORKFLOW_RECOVERY_GUIDE.md)**: Workflow recovery guide
+- **[test_data/README.md](./test_data/README.md)**: 🧪 Test data guide
 
 ---
 
 ## 🛠️ Troubleshooting
 
-### Lambda Ingestion não é invocada
+### Lambda Ingestion not invoked
 
-1. Verificar se S3 Event Notifications estão configurados:
+1. Check if S3 Event Notifications are configured:
    ```bash
    aws s3api get-bucket-notification-configuration --bucket datalake-pipeline-landing-dev
    ```
 
-2. Verificar permissões da Lambda:
+2. Check Lambda permissions:
    ```bash
    aws lambda get-policy --function-name datalake-pipeline-ingestion-dev
    ```
 
-### Job Silver falha
+### Job Silver fails
 
-1. Verificar se tabela Bronze existe:
+1. Check if Bronze table exists:
    ```bash
    aws glue get-table --database-name datalake-pipeline-catalog-dev --name bronze_car_data
    ```
 
-2. Verificar logs do Job:
+2. Check Job logs:
    ```bash
    aws logs tail /aws/glue/jobs/datalake-pipeline-silver-consolidation-dev --follow
    ```
 
-### Workflow não inicia
+### Workflow doesn't start
 
-1. Verificar se trigger está habilitado:
+1. Check if trigger is enabled:
    ```bash
    aws glue get-triggers --query "Triggers[?WorkflowName=='datalake-pipeline-silver-gold-workflow-dev']"
    ```
 
-2. Iniciar manualmente:
+2. Start manually:
    ```bash
    aws glue start-workflow-run --name datalake-pipeline-silver-gold-workflow-dev
    ```
 
 ---
 
-## 🤝 Contribuição
+## 🤝 Contributing
 
-Contribuições são bem-vindas! Por favor:
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
----
-
-## 📄 Licença
-
-Este projeto é fornecido como exemplo educacional para demonstração de arquitetura de Data Lakehouse na AWS.
+Contributions are welcome! Please:
+1. Fork the project
+2. Create a branch for your feature (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
-## 👥 Autores
+## 📄 License
+
+This project is provided as an educational example to demonstrate Data Lakehouse architecture on AWS.
+
+---
+
+## 👥 Authors
 
 - **Peterson VM** - [GitHub](https://github.com/petersonvm)
 
 ---
 
-## 🙏 Agradecimentos
+## 🙏 Acknowledgments
 
 - AWS Glue Documentation
 - Databricks Medallion Architecture
@@ -919,4 +919,4 @@ Este projeto é fornecido como exemplo educacional para demonstração de arquit
 
 ---
 
-**Desenvolvido com ❤️ usando Terraform, AWS Glue e Python**
+**Developed with ❤️ using Terraform, AWS Glue e Python**

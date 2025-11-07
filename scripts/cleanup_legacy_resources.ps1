@@ -1,7 +1,7 @@
-# Script de Limpeza Automatizada de Recursos Legados
-# Autor: Engenheiro DevOps Sênior
-# Data: 06 de Novembro de 2025
-# Versão: 1.0
+# Automated Legacy Resources Cleanup Script
+# Author: Senior DevOps Engineer
+# Date: November 6, 2025
+# Version: 1.0
 
 param(
     [Parameter(Mandatory=$false)]
@@ -17,7 +17,7 @@ param(
     [string]$ProjectName = "datalake-pipeline"
 )
 
-# Cores para output
+# Colors for output
 $Green = "Green"
 $Yellow = "Yellow"
 $Red = "Red"
@@ -25,29 +25,29 @@ $Cyan = "Cyan"
 $Gray = "Gray"
 
 Write-Host "`n╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor $Green
-Write-Host "║       🧹 LIMPEZA DE RECURSOS LEGADOS - CAR LAKEHOUSE               ║" -ForegroundColor $Green
+Write-Host "║       🧹 LEGACY RESOURCES CLEANUP - CAR LAKEHOUSE               ║" -ForegroundColor $Green
 Write-Host "╚═══════════════════════════════════════════════════════════════════════╝`n" -ForegroundColor $Green
 
-Write-Host "📋 CONFIGURAÇÃO:" -ForegroundColor $Cyan
-Write-Host "   Modo: $(if($DryRun){'DRY RUN (simulação)'}else{'EXECUÇÃO REAL'})" -ForegroundColor $(if($DryRun){$Yellow}else{$Red})
+Write-Host "📋 CONFIGURATION:" -ForegroundColor $Cyan
+Write-Host "   Mode: $(if($DryRun){'DRY RUN (simulation)'}else{'REAL EXECUTION'})" -ForegroundColor $(if($DryRun){$Yellow}else{$Red})
 Write-Host "   Environment: $Environment" -ForegroundColor $Gray
 Write-Host "   Project: $ProjectName" -ForegroundColor $Gray
-Write-Host "   Backup: $(if($SkipBackup){'Desabilitado'}else{'Habilitado'})`n" -ForegroundColor $Gray
+Write-Host "   Backup: $(if($SkipBackup){'Disabled'}else{'Enabled'})`n" -ForegroundColor $Gray
 
-# Validar diretório terraform
+# Validate terraform directory
 if (-not (Test-Path "terraform")) {
-    Write-Host "❌ ERRO: Diretório 'terraform' não encontrado!" -ForegroundColor $Red
-    Write-Host "   Execute este script da raiz do projeto.`n" -ForegroundColor $Red
+    Write-Host "❌ ERROR: Directory 'terraform' not found!" -ForegroundColor $Red
+    Write-Host "   Run this script from project root.`n" -ForegroundColor $Red
     exit 1
 }
 
 Set-Location terraform
 
 # ============================================
-# FASE 1: BACKUP DO STATE
+# PHASE 1: STATE BACKUP
 # ============================================
 if (-not $SkipBackup) {
-    Write-Host "📦 FASE 1: BACKUP DO TERRAFORM STATE" -ForegroundColor $Yellow
+    Write-Host "📦 PHASE 1: TERRAFORM STATE BACKUP" -ForegroundColor $Yellow
     
     $BackupFile = "terraform.tfstate.backup.$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     
@@ -56,9 +56,9 @@ if (-not $SkipBackup) {
     } else {
         try {
             terraform state pull > $BackupFile
-            Write-Host "   ✅ Backup criado: $BackupFile" -ForegroundColor $Green
+            Write-Host "   ✅ Backup created: $BackupFile" -ForegroundColor $Green
         } catch {
-            Write-Host "   ❌ ERRO ao criar backup: $_" -ForegroundColor $Red
+            Write-Host "   ❌ ERROR creating backup: $_" -ForegroundColor $Red
             exit 1
         }
     }
@@ -66,9 +66,9 @@ if (-not $SkipBackup) {
 }
 
 # ============================================
-# FASE 2: REMOVER RECURSOS DO STATE
+# PHASE 2: REMOVE RESOURCES FROM STATE
 # ============================================
-Write-Host "🗑️  FASE 2: REMOVER RECURSOS DO TERRAFORM STATE" -ForegroundColor $Yellow
+Write-Host "🗑️  PHASE 2: REMOVE RESOURCES FROM TERRAFORM STATE" -ForegroundColor $Yellow
 
 $ResourcesToRemove = @(
     "aws_lambda_function.cleansing",
@@ -86,7 +86,7 @@ $RemovedCount = 0
 $ErrorCount = 0
 
 foreach ($Resource in $ResourcesToRemove) {
-    Write-Host "   Removendo: $Resource..." -ForegroundColor $Gray -NoNewline
+    Write-Host "   Removing: $Resource..." -ForegroundColor $Gray -NoNewline
     
     if ($DryRun) {
         Write-Host " [DRY RUN]" -ForegroundColor $Cyan
@@ -114,7 +114,7 @@ if ($ErrorCount -gt 0) {
 Write-Host ""
 
 # ============================================
-# FASE 3: DESTRUIR RECURSOS NA AWS
+# PHASE 3: DESTROY RESOURCES IN AWS
 # ============================================
 Write-Host "💥 FASE 3: DESTRUIR RECURSOS NA AWS" -ForegroundColor $Yellow
 
@@ -219,12 +219,12 @@ if ($DryRun) {
 Write-Host ""
 
 # ============================================
-# FASE 4: VALIDAÇÃO
+# PHASE 4: VALIDATION
 # ============================================
 if (-not $DryRun) {
     Write-Host "🔍 FASE 4: VALIDAÇÃO PÓS-LIMPEZA" -ForegroundColor $Yellow
     
-    Write-Host "`n   4.1. Lambdas ativas (esperado: 1):" -ForegroundColor $Gray
+    Write-Host "`n   4.1. Active Lambdas (expected: 1):" -ForegroundColor $Gray
     $Lambdas = aws lambda list-functions --query "Functions[?starts_with(FunctionName, '$ProjectName')].FunctionName" --output text 2>$null
     if ($Lambdas) {
         $LambdaCount = ($Lambdas -split "`t").Count
@@ -232,7 +232,7 @@ if (-not $DryRun) {
         $Lambdas -split "`t" | ForEach-Object { Write-Host "         - $_" -ForegroundColor $Gray }
     }
     
-    Write-Host "`n   4.2. Crawlers ativos (esperado: 6):" -ForegroundColor $Gray
+    Write-Host "`n   4.2. Active Crawlers (expected: 6):" -ForegroundColor $Gray
     $Crawlers = aws glue get-crawlers --query "Crawlers[?starts_with(Name, '$ProjectName') || starts_with(Name, 'gold') || starts_with(Name, 'silver')].Name" --output text 2>$null
     if ($Crawlers) {
         $CrawlerCount = ($Crawlers -split "`t").Count

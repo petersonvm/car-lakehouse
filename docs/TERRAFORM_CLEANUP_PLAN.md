@@ -1,23 +1,23 @@
-# 🧹 Plano de Limpeza de Recursos Legados - Car Lakehouse
+# 🧹 Legacy Resources Cleanup Plan - Car Lakehouse
 
-**Data**: 06 de Novembro de 2025  
-**Versão Pipeline**: v2.1 (100% funcional)  
-**Objetivo**: Remover 10+ recursos órfãos para otimização de custos e redução de complexidade
+**Date**: 06 November 2025  
+**Pipeline Version**: v2.1 (100% functional)  
+**Objective**: Remover 10+ recursos órfãos para otimização de custos e redução de complexidade
 
 ---
 
-## 📋 Inventário de Recursos Legados
+## 📋 Legacy Resources Inventory
 
-### Estado Atual no Terraform State
+### Current State in Terraform State
 
 ```bash
-# Recursos legados identificados:
+# Identified legacy resources:
 aws_lambda_function.cleansing
 aws_lambda_function.etl["analysis"]
 aws_lambda_function.etl["compliance"]
 aws_glue_crawler.gold_alerts_slim_crawler
 aws_glue_crawler.gold_fuel_efficiency_crawler
-aws_iam_role.gold_alerts_slim_crawler_role (+ 3 policies associadas)
+aws_iam_role.gold_alerts_slim_crawler_role (+ 3 associated policies)
 ```
 
 ### Recursos de Cleanup (null_resource)
@@ -33,16 +33,16 @@ null_resource.cleanup_lambda_compliance
 
 ---
 
-## 🎯 Estratégia de Remoção
+## 🎯 Removal Strategy
 
 ### Fase 1: Remoção via Terraform Destroy (Recursos Gerenciados)
 
 **Recursos a remover do código Terraform:**
 
 #### 1. Lambdas Legadas (3 recursos)
-- ✅ `aws_lambda_function.cleansing` (substituída por Glue Job Silver)
-- ✅ `aws_lambda_function.etl["analysis"]` (substituída por Glue Jobs Gold)
-- ✅ `aws_lambda_function.etl["compliance"]` (não implementada)
+- ✅ `aws_lambda_function.cleansing` (replaced by Glue Job Silver)
+- ✅ `aws_lambda_function.etl["analysis"]` (replaced by Glue Jobs Gold)
+- ✅ `aws_lambda_function.etl["compliance"]` (not implemented)
 
 #### 2. Crawlers Duplicados (2 recursos)
 - ✅ `aws_glue_crawler.gold_alerts_slim_crawler` (duplicado no crawlers.tf)
@@ -57,35 +57,35 @@ null_resource.cleanup_lambda_compliance
 ### Fase 2: Verificação de Recursos AWS (Fora do Terraform)
 
 Verificar e remover manualmente (se existirem):
-- Crawlers órfãos na AWS Console
-- Jobs Glue legados
-- Tabelas Catalog órfãs
+- Orphan Crawlers in AWS Console
+- Legacy Glue Jobs
+- Orphan Catalog Tables
 
 ---
 
-## 🚀 Plano de Execução
+## 🚀 Execution Plan
 
-### Passo 1: Backup do State Atual
+### Step 1: Current State Backup
 
 ```bash
 cd terraform
 
-# Backup do state
+# State backup
 terraform state pull > terraform.tfstate.backup.$(date +%Y%m%d-%H%M%S)
 
-# Listar recursos legados
+# List legacy resources
 terraform state list | grep -E "cleansing|analysis|compliance|gold_alerts_slim_crawler|gold_fuel_efficiency_crawler"
 ```
 
-### Passo 2: Remover Recursos Específicos do State (Opção Rápida)
+### Step 2: Remover Recursos Específicos do State (Opção Rápida)
 
 ```bash
-# Remover Lambdas legadas
+# Remove legacy Lambdas
 terraform state rm aws_lambda_function.cleansing
 terraform state rm 'aws_lambda_function.etl["analysis"]'
 terraform state rm 'aws_lambda_function.etl["compliance"]'
 
-# Remover Crawlers duplicados
+# Remove duplicated Crawlers
 terraform state rm aws_glue_crawler.gold_alerts_slim_crawler
 terraform state rm aws_glue_crawler.gold_fuel_efficiency_crawler
 
@@ -98,30 +98,30 @@ terraform state rm aws_iam_role_policy.gold_alerts_slim_crawler_s3
 
 **⚠️ IMPORTANTE**: Após remover do state, os recursos continuam existindo na AWS. Execute o Passo 3 para destruí-los.
 
-### Passo 3: Destruir Recursos na AWS (Após Remover do State)
+### Step 3: Destruir Recursos na AWS (Após Remover do State)
 
 ```bash
-# Destruir Lambdas legadas
+# Destroy legacy Lambdas
 aws lambda delete-function --function-name datalake-pipeline-cleansing-dev
 aws lambda delete-function --function-name datalake-pipeline-analysis-dev
 aws lambda delete-function --function-name datalake-pipeline-compliance-dev
 
-# Destruir Crawlers duplicados
+# Destroy duplicated Crawlers
 aws glue delete-crawler --name gold_alerts_slim_crawler
 aws glue delete-crawler --name gold_fuel_efficiency_crawler
 
-# Destruir IAM Role órfã (primeiro remover policies)
+# Destroy orphan IAM Role (primeiro remover policies)
 aws iam delete-role-policy --role-name gold_alerts_slim_crawler_role --policy-name catalog_access
 aws iam delete-role-policy --role-name gold_alerts_slim_crawler_role --policy-name cloudwatch_access
 aws iam delete-role-policy --role-name gold_alerts_slim_crawler_role --policy-name s3_access
 aws iam delete-role --role-name gold_alerts_slim_crawler_role
 ```
 
-### Passo 4: Limpar Código Terraform (Remover Definições)
+### Step 4: Limpar Código Terraform (Remover Definições)
 
 #### 4.1. Editar `terraform/lambda.tf`
 
-**Remover o bloco completo da função cleansing (linhas ~167-211):**
+**Remover o bloco completo da função cleansing (lines ~167-211):**
 
 ```tf
 # REMOVER ESTE BLOCO:
@@ -133,7 +133,7 @@ resource "aws_lambda_function" "cleansing" {
 
 #### 4.2. Editar `terraform/variables.tf`
 
-**Remover as entradas legadas do map `lambda_functions` (linhas ~91-111):**
+**Remover as entradas legadas do map `lambda_functions` (lines ~91-111):**
 
 ```tf
 # REMOVER:
@@ -161,7 +161,7 @@ resource "aws_lambda_function" "cleansing" {
     }
 ```
 
-**Remover variável cleansing_lambda_config (linhas ~153-174):**
+**Remover variável cleansing_lambda_config (lines ~153-174):**
 
 ```tf
 # REMOVER:
@@ -171,7 +171,7 @@ variable "cleansing_lambda_config" {
 }
 ```
 
-**Remover variável cleansing_package_path (linhas ~177-181):**
+**Remover variável cleansing_package_path (lines ~177-181):**
 
 ```tf
 # REMOVER:
@@ -184,7 +184,7 @@ variable "cleansing_package_path" {
 
 #### 4.3. Editar `terraform/crawlers.tf`
 
-**Remover crawlers duplicados (linhas ~46-76):**
+**Remove duplicated crawlers (lines ~46-76):**
 
 ```tf
 # REMOVER:
@@ -202,10 +202,10 @@ resource "aws_glue_crawler" "gold_alerts_slim_crawler" {
 - ✅ `aws_glue_crawler.gold_car_current_state_crawler`
 - Os crawlers gold corretos estão definidos em outros arquivos (glue_gold_*.tf)
 
-### Passo 5: Validar Terraform após Limpeza
+### Step 5: Validate Terraform após Limpeza
 
 ```bash
-# Formatar código
+# Format code
 terraform fmt
 
 # Validar configuração
@@ -215,7 +215,7 @@ terraform validate
 terraform plan
 ```
 
-### Passo 6: Aplicar Mudanças (Se Necessário)
+### Step 6: Aplicar Mudanças (Se Necessário)
 
 ```bash
 # Se o terraform plan mostrou mudanças esperadas
@@ -316,7 +316,7 @@ terraform state list | wc -l
 - ✅ 1 IAM Role órfã + 3 policies
 - ✅ ~10 recursos no Terraform state
 
-### Economia de Custos Estimada
+### Cost Savings Estimada
 - **Lambdas não utilizadas**: $0/mês (não eram invocadas)
 - **Crawlers duplicados**: ~$0.50/mês (DPUs desperdiçadas)
 - **IAM Role órfã**: $0/mês (sem custo direto)
@@ -332,12 +332,12 @@ terraform state list | wc -l
 
 ---
 
-## ⚠️ Checklist de Segurança
+## ⚠️ Safety Checklist
 
 Antes de executar a limpeza:
 
 - [ ] ✅ Backup do Terraform state criado
-- [ ] ✅ Pipeline em produção 100% funcional
+- [ ] ✅ Pipeline em produção 100% functional
 - [ ] ✅ Últimas execuções do Workflow bem-sucedidas
 - [ ] ✅ Nenhum job legado está sendo usado
 - [ ] ✅ Verificado que Lambdas legadas não têm triggers ativos
@@ -346,7 +346,7 @@ Antes de executar a limpeza:
 
 Durante a execução:
 
-- [ ] Remover recursos do state antes de destruir
+- [ ] Remover recursos do state before de destruir
 - [ ] Verificar AWS Console entre cada etapa
 - [ ] Documentar qualquer erro encontrado
 
@@ -373,7 +373,7 @@ terraform apply
 
 ---
 
-## 📝 Commit das Mudanças
+## 📝 Commit Changes
 
 Após validar a limpeza:
 
@@ -393,7 +393,7 @@ Recursos mantidos:
 - 6 Crawlers (1 Bronze + 1 Silver + 4 Gold)
 - 4 IAM Roles
 
-Impacto: Pipeline 100% funcional, ~10 recursos removidos"
+Impacto: Pipeline 100% functional, ~10 recursos removidos"
 
 git push origin gold
 ```
@@ -409,5 +409,5 @@ git push origin gold
 ---
 
 **Autor**: Engenheiro DevOps Sênior  
-**Data de Criação**: 06 de Novembro de 2025  
+**Data de Criação**: 06 November 2025  
 **Status**: ✅ Pronto para Execução
