@@ -2,9 +2,9 @@
 # AWS Glue Configuration - Data Catalog and Crawler
 # ============================================================================
 
-# Glue Database for the Data Catalog
+# Glue Database for the Data Catalog (using underscores instead of hyphens for Iceberg compatibility)
 resource "aws_glue_catalog_database" "data_lake_database" {
-  name        = "${var.project_name}-catalog-${var.environment}"
+  name        = replace("${var.project_name}-catalog-${var.environment}", "-", "_")
   description = "Glue Data Catalog database for ${var.project_name} lakehouse architecture"
 
   tags = merge(

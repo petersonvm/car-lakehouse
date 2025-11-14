@@ -146,6 +146,22 @@ data "aws_iam_policy_document" "glue_job_s3_policy" {
     ]
   }
 
+  # Full access to Gold bucket (read, write, delete for Iceberg MERGE/INSERT)
+  statement {
+    sid    = "FullAccessGoldBucket"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket"
+    ]
+    resources = [
+      aws_s3_bucket.data_lake["gold"].arn,
+      "${aws_s3_bucket.data_lake["gold"].arn}/*"
+    ]
+  }
+
   # Access to Glue scripts bucket
   statement {
     sid    = "ReadGlueScripts"
@@ -207,7 +223,8 @@ data "aws_iam_policy_document" "glue_job_catalog_policy" {
     resources = [
       "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:catalog",
       "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:database/${aws_glue_catalog_database.data_lake_database.name}",
-      "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_database.data_lake_database.name}/*"
+      "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${aws_glue_catalog_database.data_lake_database.name}/*",
+      "arn:aws:glue:${var.aws_region}:${data.aws_caller_identity.current.account_id}:database/default"
     ]
   }
 }
