@@ -74,7 +74,6 @@ def start_bronze_crawler(crawler_name):
         print(f"\nStarting Bronze crawler: {crawler_name}")
         glue_client.start_crawler(Name=crawler_name)
         print(f"Successfully started Bronze crawler")
-        print(f"EventBridge will trigger workflow when crawler succeeds")
         return True
     except glue_client.exceptions.CrawlerRunningException:
         print(f"Bronze crawler is already running - skipping start")
@@ -82,6 +81,28 @@ def start_bronze_crawler(crawler_name):
     except Exception as e:
         print(f"Failed to start Bronze crawler: {str(e)}")
         return False
+
+def start_workflow(workflow_name):
+    """
+    Start the Glue Workflow directly (bypassing EventBridge).
+    This is more reliable than waiting for crawler events.
+    
+    Args:
+        workflow_name: Name of the Glue Workflow to start
+        
+    Returns:
+        str: Workflow Run ID if started successfully, None otherwise
+    """
+    try:
+        print(f"\nStarting Glue Workflow: {workflow_name}")
+        response = glue_client.start_workflow_run(Name=workflow_name)
+        run_id = response['RunId']
+        print(f"Successfully started workflow")
+        print(f"Run ID: {run_id[:20]}...")
+        return run_id
+    except Exception as e:
+        print(f"Failed to start workflow: {str(e)}")
+        return None
 
 def lambda_handler(event, context):
     """
@@ -102,14 +123,18 @@ def lambda_handler(event, context):
     landing_bucket_env = os.environ.get('LANDING_BUCKET')
     bronze_crawler_name = os.environ.get('BRONZE_CRAWLER_NAME', 
                                           'datalake-pipeline-bronze-car-data-crawler-dev')
+    workflow_name = os.environ.get('WORKFLOW_NAME',
+                                   'datalake-pipeline-silver-gold-workflow-dev-eventdriven')
     
     print(f"Ingestion Lambda started at {datetime.utcnow().isoformat()}")
     print(f"Bronze bucket: {bronze_bucket}")
     print(f"Bronze crawler: {bronze_crawler_name}")
+    print(f"Workflow: {workflow_name}")
     
     processed_files = []
     failed_files = []
     crawler_triggered = False
+    workflow_run_id = None
     
     try:
         # Process each record in the S3 event
@@ -162,6 +187,13 @@ def lambda_handler(event, context):
                 # Get current timestamp for partitioning (ingestion date)
                 ingestion_time = datetime.utcnow()
                 
+                # Add event_primary_timestamp from telemetryTimestamp if exists
+                if 'telemetryTimestamp' in df.columns:
+                    df['event_primary_timestamp'] = df['telemetryTimestamp']
+                else:
+                    # Fallback to ingestion time if telemetryTimestamp not present
+                    df['event_primary_timestamp'] = ingestion_time.isoformat()
+                
                 # Add partition columns
                 df['ingest_year'] = ingestion_time.year
                 df['ingest_month'] = ingestion_time.month
@@ -172,7 +204,7 @@ def lambda_handler(event, context):
                 df['source_file'] = source_key
                 df['source_bucket'] = source_bucket
                 
-                print(f"Added metadata and partition columns")
+                print(f"Added event_primary_timestamp, metadata and partition columns")
                 
                 # Create partitioned path
                 partitioned_path = f"car_data/ingest_year={ingestion_time.year}/ingest_month={ingestion_time.month:02d}/ingest_day={ingestion_time.day:02d}"
@@ -270,21 +302,27 @@ def lambda_handler(event, context):
                 })
                 continue
         
-        # After processing all files, start Bronze crawler if any files were processed
+        # After processing all files, start Bronze crawler and workflow if any files were processed
         if processed_files:
             print(f"\n{'='*60}")
             print(f"Successfully processed {len(processed_files)} files")
-            print(f"Triggering Bronze crawler to start event-driven pipeline...")
+            print(f"Triggering Bronze crawler to catalog new data...")
             crawler_triggered = start_bronze_crawler(bronze_crawler_name)
             
             if crawler_triggered:
-                print(f"\nEvent-Driven Pipeline Flow:")
-                print(f"1. Lambda ingestion: COMPLETED")
-                print(f"2. Bronze crawler: STARTING")
-                print(f"3. EventBridge: Will trigger workflow on crawler success")
-                print(f"4. Glue Workflow: Silver -> Gold (Iceberg, no crawlers)")
+                print(f"\nStarting workflow directly (bypassing EventBridge)...")
+                workflow_run_id = start_workflow(workflow_name)
+                
+                if workflow_run_id:
+                    print(f"\n✅ Event-Driven Pipeline Flow:")
+                    print(f"1. Lambda ingestion: COMPLETED")
+                    print(f"2. Bronze crawler: STARTING (catalogs data)")
+                    print(f"3. Glue Workflow: STARTED (Run ID: {workflow_run_id[:20]}...)")
+                    print(f"4. Pipeline: Silver -> Gold (Iceberg, no EventBridge needed)")
+                else:
+                    print(f"\n⚠️  Crawler started but workflow failed to start")
         else:
-            print(f"\nNo files processed - crawler not triggered")
+            print(f"\nNo files processed - crawler and workflow not triggered")
         
         # Prepare response
         response = {
@@ -294,11 +332,14 @@ def lambda_handler(event, context):
                 'processed_files': len(processed_files),
                 'failed_files': len(failed_files),
                 'crawler_triggered': crawler_triggered,
-                'mode': 'event-driven',
+                'workflow_started': workflow_run_id is not None,
+                'workflow_run_id': workflow_run_id,
+                'mode': 'event-driven-direct',
                 'details': {
                     'processed': processed_files,
                     'failed': failed_files,
-                    'bronze_crawler': bronze_crawler_name if crawler_triggered else None
+                    'bronze_crawler': bronze_crawler_name if crawler_triggered else None,
+                    'workflow': workflow_name if workflow_run_id else None
                 }
             }, indent=2)
         }
@@ -306,6 +347,9 @@ def lambda_handler(event, context):
         print(f"\n{'='*60}")
         print(f"Summary: {len(processed_files)} processed, {len(failed_files)} failed")
         print(f"Crawler triggered: {crawler_triggered}")
+        print(f"Workflow started: {workflow_run_id is not None}")
+        if workflow_run_id:
+            print(f"Workflow Run ID: {workflow_run_id[:20]}...")
         print(f"Lambda execution completed at {datetime.utcnow().isoformat()}")
         
         return response

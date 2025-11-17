@@ -10,6 +10,60 @@
 # ============================================================================
 
 # ============================================================================
+# GLUE JOB: Silver Consolidation (Event-Driven Pipeline)
+# ============================================================================
+
+resource "aws_glue_job" "silver_consolidation_eventdriven" {
+  name              = "${var.project_name}-silver-consolidation-eventdriven-${var.environment}"
+  role_arn          = aws_iam_role.glue_job.arn
+  glue_version      = "4.0"
+  worker_type       = var.glue_worker_type
+  number_of_workers = var.glue_number_of_workers
+  timeout           = var.glue_job_timeout_minutes
+  max_retries       = 1
+  
+  command {
+    name            = "glueetl"
+    script_location = "s3://${aws_s3_bucket.glue_scripts.bucket}/glue_jobs/silver_consolidation_job_eventdriven.py"
+    python_version  = "3"
+  }
+  
+  default_arguments = {
+    "--job-language"                      = "python"
+    "--job-bookmark-option"               = "job-bookmark-enable"
+    "--enable-metrics"                    = "true"
+    "--enable-spark-ui"                   = "true"
+    "--enable-continuous-cloudwatch-log"  = "true"
+    "--spark-event-logs-path"             = "s3://${aws_s3_bucket.glue_temp.bucket}/spark-logs/"
+    "--TempDir"                           = "s3://${aws_s3_bucket.glue_temp.bucket}/temp/"
+    
+    # Iceberg-specific configurations
+    "--enable-glue-datacatalog"           = "true"
+    "--datalake-formats"                  = "iceberg"
+    
+    # Job parameters
+    "--bronze_database"                   = aws_glue_catalog_database.data_lake_database.name
+    "--bronze_table"                      = "bronze_car_data"
+    "--silver_database"                   = aws_glue_catalog_database.data_lake_database.name
+    "--silver_table"                      = "silver_car_telemetry"
+  }
+  
+  execution_property {
+    max_concurrent_runs = 1
+  }
+  
+  tags = merge(
+    local.common_tags,
+    {
+      Name        = "${var.project_name}-silver-consolidation-eventdriven-${var.environment}"
+      Layer       = "Silver"
+      Format      = "Iceberg"
+      Pipeline    = "EventDriven"
+    }
+  )
+}
+
+# ============================================================================
 # EVENT-DRIVEN WORKFLOW (Without Crawlers)
 # ============================================================================
 
@@ -50,7 +104,7 @@ resource "aws_glue_trigger" "eventdriven_start_silver" {
   enabled       = true
 
   actions {
-    job_name = aws_glue_job.silver_consolidation_iceberg.name
+    job_name = aws_glue_job.silver_consolidation_eventdriven.name
     timeout  = var.job_timeout_minutes
     
     notification_property {
@@ -85,7 +139,7 @@ resource "aws_glue_trigger" "eventdriven_silver_to_gold_job1" {
     logical = "ANY"
 
     conditions {
-      job_name = aws_glue_job.silver_consolidation_iceberg.name
+      job_name = aws_glue_job.silver_consolidation_eventdriven.name
       state    = "SUCCEEDED"
     }
   }
@@ -210,7 +264,7 @@ resource "aws_cloudwatch_event_rule" "bronze_crawler_success" {
     detail-type = ["Glue Crawler State Change"]
     detail = {
       crawlerName = ["${var.project_name}-bronze-car-data-crawler-${var.environment}"]
-      state       = ["Succeeded"]
+      state       = ["SUCCEEDED"]
     }
   })
 }
@@ -273,12 +327,12 @@ resource "aws_iam_role_policy" "eventbridge_start_workflow" {
 }
 
 # ============================================================================
-# IAM POLICY ATTACHMENT - Lambda Permission to Start Crawler
+# IAM POLICY ATTACHMENT - Lambda Permissions for Event-Driven Pipeline
 # ============================================================================
-# Add permission for Lambda to start Bronze crawler
+# Add permissions for Lambda to start Bronze crawler and Glue workflow
 
-resource "aws_iam_role_policy" "lambda_start_crawler" {
-  name = "AllowStartBronzeCrawler"
+resource "aws_iam_role_policy" "lambda_start_crawler_and_workflow" {
+  name = "AllowStartCrawlerAndWorkflow"
   role = aws_iam_role.lambda_execution.name
 
   policy = jsonencode({
@@ -292,6 +346,16 @@ resource "aws_iam_role_policy" "lambda_start_crawler" {
         ]
         Resource = [
           "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:crawler/${var.project_name}-bronze-car-data-crawler-${var.environment}"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:StartWorkflowRun",
+          "glue:GetWorkflowRun"
+        ]
+        Resource = [
+          "arn:aws:glue:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:workflow/${aws_glue_workflow.silver_gold_pipeline_eventdriven.name}"
         ]
       }
     ]

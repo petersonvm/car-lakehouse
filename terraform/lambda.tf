@@ -135,6 +135,9 @@ resource "aws_lambda_function" "ingestion" {
         BRONZE_BUCKET  = aws_s3_bucket.data_lake["bronze"].id
         SILVER_BUCKET  = aws_s3_bucket.data_lake["silver"].id
         GOLD_BUCKET    = aws_s3_bucket.data_lake["gold"].id
+        # Event-driven pipeline configuration
+        BRONZE_CRAWLER_NAME = "${var.project_name}-bronze-car-data-crawler-${var.environment}"
+        WORKFLOW_NAME       = "${var.workflow_name}-eventdriven"
       }
     )
   }
